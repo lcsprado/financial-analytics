@@ -6,6 +6,7 @@ import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
 import PrintButton from "@/components/PrintButton";
+import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 
 export default function Home() {
@@ -18,6 +19,7 @@ export default function Home() {
       <ClientFilterSearchEnhancer />
       <DashboardVisualControls />
       <MonthlyVariationEnhancer />
+      <ReceiptClientsFallback />
       <InvoiceDateRangeFilter />
       <ReceiptDateRangeFilter />
     </>
