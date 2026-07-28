@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ImportState, Receipt } from "@/lib/types";
 import { currency, percent } from "@/lib/format";
@@ -49,9 +49,8 @@ function nameMatches(client: string, hint: string) {
   return common >= Math.min(2, Math.max(1, Math.floor(bTokens.length * 0.45)));
 }
 
-function readData(): ImportState {
+function parseData(raw: string | null): ImportState {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) as ImportState : { invoices: [], receipts: [] };
   } catch {
     return { invoices: [], receipts: [] };
@@ -107,15 +106,27 @@ export default function ReceiptClientsFallback() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [data, setData] = useState<ImportState>({ invoices: [], receipts: [] });
   const [filters, setFilters] = useState<FilterSnapshot>({ year: "all", month: "all", client: "" });
+  const dataSignature = useRef("");
+  const filterSignature = useRef("");
 
   useEffect(() => {
     const sync = () => {
-      const nextData = readData();
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const nextData = parseData(raw);
       const nextFilters = readFilters();
+      const nextFilterSignature = `${nextFilters.year}|${nextFilters.month}|${nextFilters.client}`;
       const nextTarget = document.querySelector<HTMLElement>(".clients-page");
+
       addReceiptClientOptions(nextData);
-      setData(nextData);
-      setFilters(nextFilters);
+
+      if ((raw ?? "") !== dataSignature.current) {
+        dataSignature.current = raw ?? "";
+        setData(nextData);
+      }
+      if (nextFilterSignature !== filterSignature.current) {
+        filterSignature.current = nextFilterSignature;
+        setFilters(nextFilters);
+      }
       setTarget((current) => current === nextTarget ? current : nextTarget);
     };
 
