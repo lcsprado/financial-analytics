@@ -9,6 +9,7 @@ import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
 import PrintButton from "@/components/PrintButton";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
+import ReportSourceLabels from "@/components/ReportSourceLabels";
 
 export default function Home() {
   return (
@@ -16,6 +17,7 @@ export default function Home() {
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
+      <ReportSourceLabels />
       <EmptyStateImportRedirect />
       <ClientFilterSearchEnhancer />
       <DashboardKpiCleanup />
