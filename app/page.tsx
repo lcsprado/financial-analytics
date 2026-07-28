@@ -1,4 +1,5 @@
 import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
+import DashboardKpiCleanup from "@/components/DashboardKpiCleanup";
 import DashboardVisualControls from "@/components/DashboardVisualControls";
 import EmptyStateImportRedirect from "@/components/EmptyStateImportRedirect";
 import FinancialDashboard from "@/components/FinancialDashboard";
@@ -17,6 +18,7 @@ export default function Home() {
       <FinancialDashboard />
       <EmptyStateImportRedirect />
       <ClientFilterSearchEnhancer />
+      <DashboardKpiCleanup />
       <DashboardVisualControls />
       <MonthlyVariationEnhancer />
       <ReceiptClientsFallback />

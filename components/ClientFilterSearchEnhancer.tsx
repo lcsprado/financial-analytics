@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -41,6 +42,7 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const optionsSignatureRef = useRef("");
   const [options, setOptions] = useState<ClientOption[]>(() => readOptions(select));
+  const [selectedValue, setSelectedValue] = useState(select.value);
   const [text, setText] = useState(() => {
     const selected = select.options[select.selectedIndex];
     return select.value ? selected?.textContent?.trim() || select.value : "";
@@ -57,6 +59,8 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
         setOptions(nextOptions);
       }
 
+      setSelectedValue((current) => current === select.value ? current : select.value);
+
       if (document.activeElement !== inputRef.current) {
         const selected = select.options[select.selectedIndex];
         const selectedLabel = select.value
@@ -70,7 +74,7 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
     select.addEventListener("change", sync);
     const optionObserver = new MutationObserver(sync);
     optionObserver.observe(select, { childList: true, subtree: true });
-    const timer = window.setInterval(sync, 250);
+    const timer = window.setInterval(sync, 350);
 
     return () => {
       window.clearInterval(timer);
@@ -78,6 +82,11 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
       select.removeEventListener("change", sync);
     };
   }, [select]);
+
+  const selectedIndex = options.findIndex((option) => option.value === selectedValue);
+  const positionLabel = selectedIndex >= 0
+    ? `${selectedIndex + 1}/${options.length}`
+    : `${options.length}`;
 
   function handleTextChange(value: string) {
     setText(value);
@@ -107,43 +116,80 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
     }, 120);
   }
 
+  function navigateClient(direction: -1 | 1) {
+    if (!options.length) return;
+
+    const nextIndex = selectedIndex < 0
+      ? (direction === 1 ? 0 : options.length - 1)
+      : (selectedIndex + direction + options.length) % options.length;
+    const next = options[nextIndex];
+
+    setText(next.label);
+    changeNativeSelect(select, next.value);
+    inputRef.current?.blur();
+  }
+
   return (
-    <div className="client-search-control">
-      <input
-        ref={inputRef}
-        type="search"
-        list={listId}
-        value={text}
-        placeholder="Todos os clientes"
-        aria-label="Buscar cliente"
-        autoComplete="off"
-        onChange={(event) => handleTextChange(event.target.value)}
-        onBlur={restoreSelectedValue}
-        onFocus={(event) => event.currentTarget.select()}
-      />
-      <datalist id={listId}>
-        {options.map((option) => (
-          <option key={option.value} value={option.label} />
-        ))}
-      </datalist>
-      {(text || select.value) ? (
+    <div className="client-filter-navigation">
+      <div className="client-search-control">
+        <input
+          ref={inputRef}
+          type="search"
+          list={listId}
+          value={text}
+          placeholder="Todos os clientes"
+          aria-label="Buscar cliente"
+          autoComplete="off"
+          onChange={(event) => handleTextChange(event.target.value)}
+          onBlur={restoreSelectedValue}
+          onFocus={(event) => event.currentTarget.select()}
+        />
+        <datalist id={listId}>
+          {options.map((option) => (
+            <option key={option.value} value={option.label} />
+          ))}
+        </datalist>
+        {(text || select.value) && (
+          <button
+            type="button"
+            className="client-search-clear"
+            aria-label="Limpar cliente"
+            title="Mostrar todos os clientes"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setText("");
+              changeNativeSelect(select, "");
+              inputRef.current?.focus();
+            }}
+          >
+            ×
+          </button>
+        )}
+        <span className="client-search-position" title={`${options.length} clientes disponíveis`}>
+          {positionLabel}
+        </span>
+      </div>
+
+      <div className="client-navigation-buttons" role="group" aria-label="Navegar entre clientes">
         <button
           type="button"
-          className="client-search-clear"
-          aria-label="Limpar cliente"
-          title="Limpar cliente"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => {
-            setText("");
-            changeNativeSelect(select, "");
-            inputRef.current?.focus();
-          }}
+          aria-label="Cliente anterior"
+          title="Cliente anterior"
+          disabled={!options.length}
+          onClick={() => navigateClient(-1)}
         >
-          ×
+          <ChevronUp size={14} />
         </button>
-      ) : (
-        <span className="client-search-chevron" aria-hidden="true">⌄</span>
-      )}
+        <button
+          type="button"
+          aria-label="Próximo cliente"
+          title="Próximo cliente"
+          disabled={!options.length}
+          onClick={() => navigateClient(1)}
+        >
+          <ChevronDown size={14} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -184,18 +230,26 @@ export default function ClientFilterSearchEnhancer() {
         }
 
         .client-filter .select-wrap {
-          width: 235px;
+          width: 275px;
+        }
+
+        .client-filter-navigation {
+          width: 275px;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 32px;
+          gap: 5px;
+          align-items: stretch;
         }
 
         .client-search-control {
           position: relative;
-          width: 235px;
+          min-width: 0;
         }
 
         .client-search-control input {
           width: 100%;
           height: 34px;
-          padding: 0 31px 0 11px;
+          padding: 0 67px 0 11px;
           color: #50596c;
           background: #f8f9fc;
           border: 1px solid #e6e9f0;
@@ -215,10 +269,9 @@ export default function ClientFilterSearchEnhancer() {
           display: none;
         }
 
-        .client-search-clear,
-        .client-search-chevron {
+        .client-search-clear {
           position: absolute;
-          right: 8px;
+          right: 34px;
           top: 50%;
           transform: translateY(-50%);
           width: 20px;
@@ -232,26 +285,78 @@ export default function ClientFilterSearchEnhancer() {
           line-height: 1;
         }
 
-        .client-search-chevron {
-          pointer-events: none;
-          font-size: 15px;
-        }
-
         .client-search-clear:hover {
           color: #1b2131;
           background: #eceff6;
           border-radius: 50%;
         }
 
+        .client-search-position {
+          position: absolute;
+          right: 7px;
+          top: 50%;
+          transform: translateY(-50%);
+          min-width: 25px;
+          padding: 3px 4px;
+          border-radius: 5px;
+          color: #7d879b;
+          background: #edf0f6;
+          font-size: 8px;
+          font-weight: 850;
+          line-height: 1;
+          text-align: center;
+          pointer-events: none;
+        }
+
+        .client-navigation-buttons {
+          display: grid;
+          grid-template-rows: repeat(2, 1fr);
+          gap: 2px;
+        }
+
+        .client-navigation-buttons button {
+          min-width: 32px;
+          padding: 0;
+          display: grid;
+          place-items: center;
+          border: 1px solid #e2e6ef;
+          border-radius: 6px;
+          color: #697389;
+          background: #f8f9fc;
+          transition: 0.16s ease;
+        }
+
+        .client-navigation-buttons button:hover:not(:disabled) {
+          color: #fff;
+          border-color: #5d72f6;
+          background: #5d72f6;
+        }
+
+        .client-navigation-buttons button:disabled {
+          opacity: 0.38;
+          cursor: not-allowed;
+        }
+
+        @media (max-width: 920px) {
+          .filter-bar {
+            flex-wrap: wrap;
+          }
+
+          .filter-heading {
+            width: 100%;
+          }
+        }
+
         @media (max-width: 760px) {
+          .client-filter,
           .client-filter .select-wrap,
-          .client-search-control {
+          .client-filter-navigation {
             width: 100%;
           }
         }
 
         @media print {
-          .client-search-control {
+          .client-filter-navigation {
             display: none !important;
           }
         }
