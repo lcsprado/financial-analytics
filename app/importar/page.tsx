@@ -2,35 +2,44 @@
 
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, LayoutDashboard, RefreshCcw, UploadCloud, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
-import DirectorWorkbookEnhancerV3 from "@/components/DirectorWorkbookEnhancerV3";
 import { parseInvoiceWorkbook, parseReceiptWorkbook } from "@/lib/parsers";
 import type { ImportState } from "@/lib/types";
 
 const STORAGE_KEY = "financial-analytics-data-v1";
-const DIRECTOR_STORAGE_KEY = "financial-analytics-director-workbook-v1";
+const LEGACY_STORAGE_KEY = "financial-analytics-director-workbook-v1";
 
 type ImportKind = "invoices" | "receipts";
 
-type DirectorSnapshot = {
+type LegacySnapshot = {
   fileName?: string;
 };
 
+function removeLegacyDirectorState() {
+  const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (!legacyRaw) return;
+
+  try {
+    const legacy = JSON.parse(legacyRaw) as LegacySnapshot;
+    const mainRaw = window.localStorage.getItem(STORAGE_KEY);
+    const main = mainRaw ? JSON.parse(mainRaw) as ImportState : null;
+
+    if (legacy.fileName && main?.invoiceFileName === legacy.fileName) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {
+    // O estado legado inválido pode ser descartado sem afetar as bases normais.
+  } finally {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  }
+}
+
 function readStoredData(): ImportState {
   try {
+    removeLegacyDirectorState();
     const raw = window.localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) as ImportState : { invoices: [], receipts: [] };
   } catch {
     return { invoices: [], receipts: [] };
-  }
-}
-
-function isDirectorWorkbook(fileName: string) {
-  try {
-    const raw = window.localStorage.getItem(DIRECTOR_STORAGE_KEY);
-    const snapshot = raw ? JSON.parse(raw) as DirectorSnapshot : null;
-    return snapshot?.fileName === fileName;
-  } catch {
-    return false;
   }
 }
 
@@ -118,15 +127,12 @@ export default function ImportarPage() {
 
       if (kind === "invoices") {
         const invoices = await parseInvoiceWorkbook(file);
-        const directorMode = isDirectorWorkbook(file.name);
         next = {
           ...current,
           invoices,
           invoiceFileName: file.name,
-          receipts: directorMode ? [] : current.receipts,
-          receiptFileName: directorMode ? undefined : current.receiptFileName,
         };
-        setNotice(`${invoices.length.toLocaleString("pt-BR")} emissões ou títulos carregados com sucesso.`);
+        setNotice(`${invoices.length.toLocaleString("pt-BR")} emissões importadas com sucesso.`);
       } else {
         const receipts = await parseReceiptWorkbook(file);
         next = {
@@ -134,7 +140,7 @@ export default function ImportarPage() {
           receipts,
           receiptFileName: file.name,
         };
-        setNotice(`${receipts.length.toLocaleString("pt-BR")} recebimentos carregados com sucesso.`);
+        setNotice(`${receipts.length.toLocaleString("pt-BR")} recebimentos importados com sucesso.`);
       }
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -167,7 +173,7 @@ export default function ImportarPage() {
         <section className="import-page">
           <div className="import-intro">
             <span className="eyebrow">ATUALIZAÇÃO DAS BASES</span>
-            <h2>Importe as planilhas do processo financeiro.</h2>
+            <h2>Importe as duas planilhas do processo financeiro.</h2>
             <p>Você pode carregar apenas uma base ou as duas. Os arquivos são processados localmente no navegador.</p>
           </div>
 
@@ -182,8 +188,8 @@ export default function ImportarPage() {
             />
             <UploadCard
               kind="receipts"
-              title="2. Conciliação — Recebimentos ou Contas a Receber"
-              description="Aceita a conciliação normal ou a planilha diária com a aba CONTAS A RECEBER."
+              title="2. Conciliação — Recebimentos"
+              description="Abas mensais com blocos por banco e a linha de início RECEBIMENTOS."
               fileName={data.receiptFileName}
               loading={loading === "receipts"}
               onFile={handleFile}
@@ -191,7 +197,7 @@ export default function ImportarPage() {
           </div>
 
           <div className="import-results">
-            <div><span className="result-icon violet"><FileSpreadsheet /></span><strong>{data.invoices.length.toLocaleString("pt-BR")}</strong><span>emissões ou títulos carregados</span></div>
+            <div><span className="result-icon violet"><FileSpreadsheet /></span><strong>{data.invoices.length.toLocaleString("pt-BR")}</strong><span>emissões carregadas</span></div>
             <div><span className="result-icon green"><UploadCloud /></span><strong>{data.receipts.length.toLocaleString("pt-BR")}</strong><span>recebimentos carregados</span></div>
           </div>
 
@@ -207,8 +213,6 @@ export default function ImportarPage() {
           </div>
         </section>
       </div>
-
-      <DirectorWorkbookEnhancerV3 />
 
       <style jsx global>{`
         .standalone-import-page {
