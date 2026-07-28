@@ -29,10 +29,35 @@ function nameMatches(client: string, hint: string) {
   return common >= Math.min(2, Math.max(1, Math.floor(bTokens.length * 0.45)));
 }
 
+function isDemoInvoice(invoice: Invoice) {
+  return invoice.id.startsWith("demo-invoice-");
+}
+
+function isDemoReceipt(receipt: Receipt) {
+  return receipt.id.startsWith("demo-receipt-") || receipt.sourceSheet === "DEMONSTRAÇÃO";
+}
+
+function resolveActiveData(invoices: Invoice[], receipts: Receipt[]) {
+  const realInvoices = invoices.filter((invoice) => !isDemoInvoice(invoice));
+  const realReceipts = receipts.filter((receipt) => !isDemoReceipt(receipt));
+  const hasRealInvoices = realInvoices.length > 0;
+  const hasRealReceipts = realReceipts.length > 0;
+
+  if (!hasRealInvoices && !hasRealReceipts) {
+    return { invoices, receipts };
+  }
+
+  return {
+    invoices: hasRealInvoices ? realInvoices : [],
+    receipts: hasRealReceipts ? realReceipts : [],
+  };
+}
+
 export function getAvailableYears(invoices: Invoice[], receipts: Receipt[]) {
+  const active = resolveActiveData(invoices, receipts);
   return [...new Set([
-    ...invoices.map((item) => Number(item.emissionDate.slice(0, 4))),
-    ...receipts.map((item) => Number(item.receiptDate.slice(0, 4))),
+    ...active.invoices.map((item) => Number(item.emissionDate.slice(0, 4))),
+    ...active.receipts.map((item) => Number(item.receiptDate.slice(0, 4))),
   ].filter(Number.isFinite))].sort((a, b) => b - a);
 }
 
@@ -47,8 +72,9 @@ export function filterReceipts(receipts: Receipt[], filter: PeriodFilter) {
 }
 
 export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], filter: PeriodFilter) {
-  const filteredInvoices = filterInvoices(invoices, filter);
-  const filteredReceipts = filterReceipts(receipts, filter);
+  const active = resolveActiveData(invoices, receipts);
+  const filteredInvoices = filterInvoices(active.invoices, filter);
+  const filteredReceipts = filterReceipts(active.receipts, filter);
   const emitted = filteredInvoices.reduce((sum, item) => sum + item.grossValue, 0);
   const received = filteredReceipts.reduce((sum, item) => sum + item.amount, 0);
   const ticket = filteredInvoices.length ? emitted / filteredInvoices.length : 0;
@@ -66,7 +92,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
     .sort((a, b) => b.value - a.value);
 
   const monthly = monthLabels.map((month, monthIndex) => {
-    const emittedMonth = invoices
+    const emittedMonth = active.invoices
       .filter((item) => {
         const date = new Date(`${item.emissionDate}T12:00:00`);
         return (filter.year === "all" || date.getFullYear() === filter.year)
@@ -74,7 +100,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
           && (!filter.client || item.clientName === filter.client);
       })
       .reduce((sum, item) => sum + item.grossValue, 0);
-    const receivedMonth = receipts
+    const receivedMonth = active.receipts
       .filter((item) => {
         const date = new Date(`${item.receiptDate}T12:00:00`);
         return (filter.year === "all" || date.getFullYear() === filter.year)
@@ -86,13 +112,13 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
   });
 
   const invoiceByNumber = new Map<string, Invoice[]>();
-  invoices.forEach((invoice) => {
+  active.invoices.forEach((invoice) => {
     if (!invoice.invoiceNumber) return;
     const list = invoiceByNumber.get(invoice.invoiceNumber) ?? [];
     list.push(invoice);
     invoiceByNumber.set(invoice.invoiceNumber, list);
   });
-  const matchedReceipts = receipts.filter((receipt) => receipt.invoiceNumbers.some((number) => {
+  const matchedReceipts = active.receipts.filter((receipt) => receipt.invoiceNumbers.some((number) => {
     const candidates = invoiceByNumber.get(number) ?? [];
     return candidates.some((invoice) => nameMatches(invoice.clientName, receipt.clientHint));
   })).length;
@@ -110,6 +136,6 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
     banks,
     monthly,
     largestClient: topClients[0]?.name ?? "—",
-    matchRate: receipts.length ? matchedReceipts / receipts.length : 0,
+    matchRate: active.receipts.length ? matchedReceipts / active.receipts.length : 0,
   };
 }
