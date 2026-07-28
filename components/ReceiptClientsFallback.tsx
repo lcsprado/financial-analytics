@@ -18,13 +18,26 @@ type ClientRow = {
   value: number;
 };
 
-function normalize(value: string) {
+function normalizeRaw(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
-    .replace(/\b(LTDA|S A|SA|EIRELI|CNPJ)\b/g, " ")
     .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isAmaUbsAlias(value: string) {
+  const tokens = new Set(normalizeRaw(value).split(" ").filter(Boolean));
+  return tokens.has("AMA") && tokens.has("UBS");
+}
+
+function normalize(value: string) {
+  if (isAmaUbsAlias(value)) return "SAO MATEUS";
+
+  return normalizeRaw(value)
+    .replace(/\b(LTDA|S A|SA|EIRELI|CNPJ)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -35,6 +48,8 @@ function displayClient(receipt: Receipt) {
     .replace(/\s*[-–—]?\s*NOTAS?[\s.:-].*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  if (isAmaUbsAlias(candidate)) return "SÃO MATEUS";
   return candidate || "Cliente não identificado";
 }
 
@@ -42,7 +57,7 @@ function nameMatches(client: string, hint: string) {
   const a = normalize(client);
   const b = normalize(hint);
   if (!a || !b) return false;
-  if (a.includes(b) || b.includes(a)) return true;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
   const aTokens = new Set(a.split(" ").filter((token) => token.length > 2));
   const bTokens = b.split(" ").filter((token) => token.length > 2);
   const common = bTokens.filter((token) => aTokens.has(token)).length;
@@ -147,7 +162,7 @@ export default function ReceiptClientsFallback() {
 
   const filteredInvoiceCount = useMemo(() => data.invoices.filter((invoice) =>
     inPeriod(invoice.emissionDate, filters)
-    && (!filters.client || invoice.clientName === filters.client),
+    && (!filters.client || normalize(invoice.clientName) === normalize(filters.client)),
   ).length, [data.invoices, filters]);
 
   const rows = useMemo(() => {

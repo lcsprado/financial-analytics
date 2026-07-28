@@ -7,22 +7,41 @@ function inPeriod(dateValue: string, filter: PeriodFilter) {
     && (filter.month === "all" || date.getMonth() === filter.month);
 }
 
-function normalizeName(value: string) {
+function normalizeRawName(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
-    .replace(/\b(LTDA|S A|SA|EIRELI|CNPJ|MUNICIPIO|PREFEITURA|FUNDO|FUNDACAO|INSTITUTO|ASSOCIACAO|HOSPITAL)\b/g, " ")
     .replace(/[^A-Z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isAmaUbsAlias(value: string) {
+  const tokens = new Set(normalizeRawName(value).split(" ").filter(Boolean));
+  return tokens.has("AMA") && tokens.has("UBS");
+}
+
+function normalizeName(value: string) {
+  if (isAmaUbsAlias(value)) return "SAO MATEUS";
+
+  return normalizeRawName(value)
+    .replace(/\b(LTDA|S A|SA|EIRELI|CNPJ|MUNICIPIO|PREFEITURA|FUNDO|FUNDACAO|INSTITUTO|ASSOCIACAO|HOSPITAL)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sameClient(client: string, candidate: string) {
+  const a = normalizeName(client);
+  const b = normalizeName(candidate);
+  return Boolean(a && b && a === b);
 }
 
 function nameMatches(client: string, hint: string) {
   const a = normalizeName(client);
   const b = normalizeName(hint);
   if (!a || !b) return true;
-  if (a.includes(b) || b.includes(a)) return true;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
   const aTokens = new Set(a.split(" ").filter((token) => token.length > 2));
   const bTokens = b.split(" ").filter((token) => token.length > 2);
   const common = bTokens.filter((token) => aTokens.has(token)).length;
@@ -63,7 +82,7 @@ export function getAvailableYears(invoices: Invoice[], receipts: Receipt[]) {
 
 export function filterInvoices(invoices: Invoice[], filter: PeriodFilter) {
   return invoices.filter((invoice) => inPeriod(invoice.emissionDate, filter)
-    && (!filter.client || invoice.clientName === filter.client));
+    && (!filter.client || sameClient(filter.client, invoice.clientName)));
 }
 
 export function filterReceipts(receipts: Receipt[], filter: PeriodFilter) {
@@ -97,7 +116,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
         const date = new Date(`${item.emissionDate}T12:00:00`);
         return (filter.year === "all" || date.getFullYear() === filter.year)
           && date.getMonth() === monthIndex
-          && (!filter.client || item.clientName === filter.client);
+          && (!filter.client || sameClient(filter.client, item.clientName));
       })
       .reduce((sum, item) => sum + item.grossValue, 0);
     const receivedMonth = active.receipts
