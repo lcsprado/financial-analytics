@@ -1,6 +1,6 @@
 import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
 import DashboardVisualControls from "@/components/DashboardVisualControls";
-import DirectorWorkbookEnhancer from "@/components/DirectorWorkbookEnhancer";
+import DirectorWorkbookEnhancerV2 from "@/components/DirectorWorkbookEnhancerV2";
 import DirectorWorkbookIsolation from "@/components/DirectorWorkbookIsolation";
 import FinancialDashboard from "@/components/FinancialDashboard";
 import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
@@ -16,7 +16,7 @@ export default function Home() {
       <ClientFilterSearchEnhancer />
       <DashboardVisualControls />
       <MonthlyVariationEnhancer />
-      <DirectorWorkbookEnhancer />
+      <DirectorWorkbookEnhancerV2 />
       <DirectorWorkbookIsolation />
       <InvoiceDateRangeFilter />
       <ReceiptDateRangeFilter />
