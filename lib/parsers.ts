@@ -118,11 +118,13 @@ export async function parseInvoiceWorkbook(file: File): Promise<Invoice[]> {
     .filter((item): item is Invoice => Boolean(item));
 }
 
+const NF_MARKER = String.raw`N\.?\s*F\.?\s*(?:E|S)?`;
+
 function extractInvoiceNumbers(description: string) {
   const upper = description.toUpperCase();
   const numbers: string[] = [];
   const patterns = [
-    /NFS?[\s.:-]*([0-9][0-9\s/.,E-]*)/g,
+    new RegExp(`${NF_MARKER}[\\s.:-]*([0-9][0-9\\s/.,E-]*)`, "g"),
     /NOTAS?[\s.:-]*([0-9][0-9\s/.,E-]*)/g,
   ];
   for (const pattern of patterns) {
@@ -138,11 +140,42 @@ function extractInvoiceNumbers(description: string) {
 }
 
 function clientHint(description: string) {
-  return description
-    .replace(/\s*[-–—]?\s*NFS?[\s.:-].*$/i, "")
-    .replace(/\s*[-–—]?\s*NOTAS?[\s.:-].*$/i, "")
+  const beforeMarker = description
+    .split(new RegExp(`\\s*[-–—]?\\s*(?:${NF_MARKER}|NOTAS?)[\\s.:-]*`, "i"))[0]
     .replace(/\s+/g, " ")
     .trim();
+
+  if (beforeMarker) return beforeMarker;
+
+  return description
+    .replace(new RegExp(`(?:${NF_MARKER}|NOTAS?)[\\s.:-]*[0-9][0-9\\s/.,E-]*`, "gi"), " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const GENERIC_CLIENT_TERMS = new Set([
+  "RECEBIMENTO",
+  "RECEBIMENTOS",
+  "CLIENTE",
+  "PAGAMENTO",
+  "PAGTO",
+  "CREDITO",
+  "PIX",
+  "TED",
+  "DOC",
+  "DEPOSITO",
+  "VALOR",
+  "BANCO",
+]);
+
+function hasClientName(description: string) {
+  const normalized = normalizeHeader(clientHint(description));
+  if (!normalized || !/[A-Z]/.test(normalized)) return false;
+
+  return normalized
+    .split(" ")
+    .filter(Boolean)
+    .some((token) => token.length >= 2 && !GENERIC_CLIENT_TERMS.has(token) && !/^\d+$/.test(token));
 }
 
 function isMonthSheet(name: string) {
@@ -213,6 +246,19 @@ function looksLikeClientReceipt(description: string) {
   return Boolean(normalized) && !NON_RECEIPT_TERMS.some((term) => normalized.includes(term));
 }
 
+function identifiedReceipt(description: string) {
+  const invoiceNumbers = extractInvoiceNumbers(description);
+  const identifiedClient = clientHint(description);
+
+  return {
+    invoiceNumbers,
+    identifiedClient,
+    isValid: looksLikeClientReceipt(description)
+      && invoiceNumbers.length > 0
+      && hasClientName(description),
+  };
+}
+
 export async function parseReceiptWorkbook(file: File): Promise<Receipt[]> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
@@ -253,7 +299,7 @@ export async function parseReceiptWorkbook(file: File): Promise<Receipt[]> {
           const date = excelDateToISO(rows[rowIndex]?.[block.dateIndex]);
           const description = text(rows[rowIndex]?.[block.descriptionIndex]);
           const amount = numeric(rows[rowIndex]?.[block.amountIndex]);
-          return Boolean(date && description && amount !== 0 && looksLikeClientReceipt(description));
+          return Boolean(date && description && amount !== 0 && identifiedReceipt(description).isValid);
         });
         if (found) {
           firstReceiptRow = rowIndex;
@@ -271,6 +317,10 @@ export async function parseReceiptWorkbook(file: File): Promise<Receipt[]> {
         const description = text(row?.[block.descriptionIndex]);
         const amount = numeric(row?.[block.amountIndex]);
         if (!date || !description || !Number.isFinite(amount) || amount === 0) continue;
+
+        const { invoiceNumbers, identifiedClient, isValid } = identifiedReceipt(description);
+        if (!isValid) continue;
+
         receipts.push({
           id: `receipt-${sheetName}-${block.descriptionIndex}-${rowIndex}`,
           receiptDate: date,
@@ -278,15 +328,15 @@ export async function parseReceiptWorkbook(file: File): Promise<Receipt[]> {
           amount,
           bank: block.bank,
           sourceSheet: sheetName,
-          invoiceNumbers: extractInvoiceNumbers(description),
-          clientHint: clientHint(description),
+          invoiceNumbers,
+          clientHint: identifiedClient,
         });
       }
     }
   }
 
   if (!receipts.length) {
-    throw new Error("Não encontrei recebimentos nas abas mensais da planilha de conciliação.");
+    throw new Error("Não encontrei recebimentos com NF e nome do cliente nas abas mensais da planilha de conciliação.");
   }
 
   return receipts.sort((a, b) => a.receiptDate.localeCompare(b.receiptDate));
