@@ -17,6 +17,7 @@ function normalizeRawName(value: string) {
     .trim();
 }
 
+// Regra de negócio: todas as unidades AMA/UBS pertencem ao cliente São Mateus.
 function isAmaUbsAlias(value: string) {
   const tokens = new Set(normalizeRawName(value).split(" ").filter(Boolean));
   return tokens.has("AMA") && tokens.has("UBS");
