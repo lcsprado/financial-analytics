@@ -1,3 +1,4 @@
+import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
 import FinancialDashboard from "@/components/FinancialDashboard";
 import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
 import PrintButton from "@/components/PrintButton";
@@ -8,6 +9,7 @@ export default function Home() {
     <>
       <PrintButton />
       <FinancialDashboard />
+      <ClientFilterSearchEnhancer />
       <InvoiceDateRangeFilter />
       <ReceiptDateRangeFilter />
     </>
