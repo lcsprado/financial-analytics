@@ -4,7 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ImportState, Receipt } from "@/lib/types";
 import { currency, percent } from "@/lib/format";
-import { canonicalClientName, clientKey, sameClientName } from "@/lib/clientNames";
+import { clientKey, sameClientName } from "@/lib/clientNames";
+import { splitClientSelection } from "@/lib/clientSelection";
+import {
+  canonicalReceiptClientName,
+  receiptClientKey,
+  sameReceiptClientName,
+} from "@/lib/receiptClientNames";
 
 const STORAGE_KEY = "financial-analytics-data-v1";
 
@@ -20,13 +26,9 @@ type ClientRow = {
 };
 
 function displayClient(receipt: Receipt) {
-  const candidate = (receipt.clientHint || receipt.description || "Cliente não identificado")
-    .replace(/\s*[-–—]?\s*NFS?[\s.:-].*$/i, "")
-    .replace(/\s*[-–—]?\s*NOTAS?[\s.:-].*$/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return canonicalClientName(candidate) || "Cliente não identificado";
+  return canonicalReceiptClientName(
+    receipt.clientHint || receipt.description || "Cliente não identificado",
+  ) || "Cliente não identificado";
 }
 
 function parseData(raw: string | null): ImportState {
@@ -54,6 +56,16 @@ function inPeriod(dateValue: string, filter: FilterSnapshot) {
     && (filter.month === "all" || date.getMonth() === filter.month);
 }
 
+function matchesInvoiceSelection(selection: string, candidate: string) {
+  const clients = splitClientSelection(selection);
+  return !clients.length || clients.some((client) => sameClientName(client, candidate));
+}
+
+function matchesReceiptSelection(selection: string, candidate: string) {
+  const clients = splitClientSelection(selection);
+  return !clients.length || clients.some((client) => sameReceiptClientName(client, candidate));
+}
+
 function setNativeSelect(select: HTMLSelectElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
   if (setter) setter.call(select, value);
@@ -67,19 +79,20 @@ function addReceiptClientOptions(data: ImportState) {
 
   const existing = new Set(
     Array.from(select.options)
-      .map((option) => clientKey(option.textContent?.trim() || option.value))
+      .filter((option) => option.dataset.multiClient !== "true")
+      .map((option) => receiptClientKey(option.textContent?.trim() || option.value))
       .filter(Boolean),
   );
 
   const clients = [...new Map(data.receipts.map((receipt) => {
     const name = displayClient(receipt);
-    return [clientKey(name), name] as const;
+    return [receiptClientKey(name), name] as const;
   })).values()]
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   clients.forEach((client) => {
-    const key = clientKey(client);
+    const key = receiptClientKey(client);
     if (!key || existing.has(key)) return;
     const option = document.createElement("option");
     option.value = client;
@@ -135,17 +148,17 @@ export default function ReceiptClientsFallback() {
 
   const filteredInvoiceCount = useMemo(() => data.invoices.filter((invoice) =>
     inPeriod(invoice.emissionDate, filters)
-    && (!filters.client || sameClientName(invoice.clientName, filters.client)),
+    && matchesInvoiceSelection(filters.client, invoice.clientName),
   ).length, [data.invoices, filters]);
 
   const rows = useMemo(() => {
     const grouped = new Map<string, ClientRow>();
     data.receipts
       .filter((receipt) => inPeriod(receipt.receiptDate, filters))
-      .filter((receipt) => !filters.client || sameClientName(filters.client, displayClient(receipt)))
+      .filter((receipt) => matchesReceiptSelection(filters.client, displayClient(receipt)))
       .forEach((receipt) => {
         const name = displayClient(receipt);
-        const key = clientKey(name) || name;
+        const key = receiptClientKey(name) || name;
         const current = grouped.get(key) ?? { name, value: 0 };
         current.value += receipt.amount;
         grouped.set(key, current);
@@ -193,14 +206,15 @@ export default function ReceiptClientsFallback() {
                 const participation = total ? item.value / total : 0;
                 return (
                   <tr
-                    key={`${clientKey(item.name)}-${index}`}
+                    key={`${receiptClientKey(item.name)}-${index}`}
                     className="clickable-row"
                     onClick={() => {
                       const select = document.querySelector<HTMLSelectElement>(".client-filter select");
                       if (select) {
                         addReceiptClientOptions(data);
                         const matchingOption = Array.from(select.options).find((option) =>
-                          sameClientName(option.textContent?.trim() || option.value, item.name),
+                          option.dataset.multiClient !== "true"
+                          && sameReceiptClientName(option.textContent?.trim() || option.value, item.name),
                         );
                         setNativeSelect(select, matchingOption?.value || item.name);
                       }
