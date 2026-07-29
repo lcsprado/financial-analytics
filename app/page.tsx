@@ -10,6 +10,7 @@ import PrintButton from "@/components/PrintButton";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
+import ScopedClientFilterEnhancer from "@/components/ScopedClientFilterEnhancer";
 
 export default function Home() {
   return (
@@ -20,6 +21,7 @@ export default function Home() {
       <ReportSourceLabels />
       <EmptyStateImportRedirect />
       <ClientFilterSearchEnhancer />
+      <ScopedClientFilterEnhancer />
       <DashboardKpiCleanup />
       <DashboardVisualControls />
       <MonthlyVariationEnhancer />
