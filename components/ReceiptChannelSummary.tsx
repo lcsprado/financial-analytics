@@ -4,14 +4,13 @@ import * as XLSX from "xlsx";
 import { Building2, CreditCard, Landmark, Sigma } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { filterInvoices, filterReceipts } from "@/lib/analytics";
 import { currency, monthLabels } from "@/lib/format";
-import type { ImportState, PeriodFilter } from "@/lib/types";
+import type { PeriodFilter } from "@/lib/types";
 
-const MAIN_STORAGE_KEY = "financial-analytics-data-v1";
 const CHANNEL_STORAGE_KEY = "financial-analytics-receipt-channels-v1";
 const INCLUDE_STORAGE_KEY = "financial-analytics-include-receipt-channels-v1";
 const CHANNEL_EVENT = "financial-analytics-receipt-channels-updated";
+const INCLUDE_EVENT = "financial-analytics-receipt-channels-include-changed";
 
 const MONTH_NAMES = [
   "JANEIRO", "FEVEREIRO", "MARÇO", "MARCO", "ABRIL", "MAIO", "JUNHO",
@@ -47,7 +46,6 @@ type BankBlock = {
   bank: SupportedBank;
 };
 
-const emptyData: ImportState = { invoices: [], receipts: [] };
 const emptyPayload: ChannelPayload = { fileName: "", entries: [] };
 
 function normalize(value: unknown) {
@@ -124,6 +122,7 @@ function detectBankBlocks(rows: unknown[][]): { headerRowIndex: number; blocks: 
 
     if (blocks.length) return { headerRowIndex: rowIndex, blocks };
   }
+
   return { headerRowIndex: 0, blocks: [] };
 }
 
@@ -147,6 +146,7 @@ async function parseChannelWorkbook(file: File): Promise<ChannelPayload> {
       defval: "",
       raw: true,
     });
+
     const { headerRowIndex, blocks } = detectBankBlocks(rows);
     if (!blocks.length) continue;
 
@@ -176,6 +176,7 @@ async function parseChannelWorkbook(file: File): Promise<ChannelPayload> {
         const description = text(row?.[block.descriptionIndex]);
         const amount = numeric(row?.[block.amountIndex]);
         const kind = channelKind(description);
+
         if (!receiptDate || !description || !kind || !Number.isFinite(amount) || amount === 0) continue;
 
         entries.push({
@@ -192,14 +193,6 @@ async function parseChannelWorkbook(file: File): Promise<ChannelPayload> {
   }
 
   return { fileName: file.name, entries };
-}
-
-function readMainData(raw: string | null): ImportState {
-  try {
-    return raw ? JSON.parse(raw) as ImportState : emptyData;
-  } catch {
-    return emptyData;
-  }
 }
 
 function readPayload(raw: string | null): ChannelPayload {
@@ -227,6 +220,7 @@ function readFilters(): FilterSnapshot {
 
 function inPeriod(dateValue: string, filter: PeriodFilter) {
   const date = new Date(`${dateValue}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
   return (filter.year === "all" || date.getFullYear() === filter.year)
     && (filter.month === "all" || date.getMonth() === filter.month);
 }
@@ -274,71 +268,76 @@ function ChannelCard({
 
 export default function ReceiptChannelSummary() {
   const [payload, setPayload] = useState<ChannelPayload>(emptyPayload);
-  const [mainData, setMainData] = useState<ImportState>(emptyData);
   const [filter, setFilter] = useState<FilterSnapshot>({ year: "all", month: "all", client: "", view: "" });
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [includeInTotal, setIncludeInTotal] = useState(false);
   const signatureRef = useRef("");
 
   useEffect(() => {
-    setIncludeInTotal(window.localStorage.getItem(INCLUDE_STORAGE_KEY) === "true");
-
-    const attachReceiptInputs = () => {
-      document.querySelectorAll<HTMLInputElement>('input[type="file"][accept*=".xlsx"]')
-        .forEach((input) => {
-          const card = input.closest<HTMLElement>(".upload-card");
-          if (!card || !/CONCILIA|RECEBIMENT/.test(normalize(card.textContent)) || input.dataset.channelReader === "true") return;
-          input.dataset.channelReader = "true";
-          input.addEventListener("change", async () => {
-            const file = input.files?.[0];
-            if (!file) return;
-            try {
-              const nextPayload = await parseChannelWorkbook(file);
-              window.localStorage.setItem(CHANNEL_STORAGE_KEY, JSON.stringify(nextPayload));
-              window.dispatchEvent(new Event(CHANNEL_EVENT));
-            } catch {
-              // A importação principal continua funcionando mesmo se o resumo auxiliar não puder ser lido.
-            }
-          });
-        });
-    };
-
     const sync = () => {
-      attachReceiptInputs();
-      const mainRaw = window.localStorage.getItem(MAIN_STORAGE_KEY);
       const channelRaw = window.localStorage.getItem(CHANNEL_STORAGE_KEY);
       const nextFilter = readFilters();
       const nextTarget = normalize(nextFilter.view) === "VISAO GERAL" ? findBankPanel() : null;
+      const nextIncluded = window.localStorage.getItem(INCLUDE_STORAGE_KEY) === "true";
       const signature = [
-        mainRaw ?? "",
         channelRaw ?? "",
         nextFilter.year,
         nextFilter.month,
         nextFilter.client,
         nextFilter.view,
         Boolean(nextTarget),
+        nextIncluded,
       ].join("|");
 
       setTarget((current) => current === nextTarget ? current : nextTarget);
       if (signature === signatureRef.current) return;
       signatureRef.current = signature;
-      setMainData(readMainData(mainRaw));
       setPayload(readPayload(channelRaw));
       setFilter(nextFilter);
+      setIncludeInTotal(nextIncluded);
     };
 
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    const timer = window.setInterval(sync, 500);
-    window.addEventListener("storage", sync);
-    window.addEventListener(CHANNEL_EVENT, sync);
+    const attachReceiptInputs = () => {
+      document.querySelectorAll<HTMLInputElement>('input[type="file"][accept*=".xlsx"]')
+        .forEach((input) => {
+          const card = input.closest<HTMLElement>(".upload-card");
+          if (!card || !/CONCILIA|RECEBIMENT/.test(normalize(card.textContent)) || input.dataset.channelReader === "true") return;
+
+          input.dataset.channelReader = "true";
+          input.addEventListener("change", async () => {
+            const file = input.files?.[0];
+            if (!file) return;
+
+            try {
+              const nextPayload = await parseChannelWorkbook(file);
+              window.localStorage.setItem(CHANNEL_STORAGE_KEY, JSON.stringify(nextPayload));
+              window.dispatchEvent(new Event(CHANNEL_EVENT));
+            } catch {
+              // A importação principal continua funcionando mesmo se o resumo auxiliar falhar.
+            }
+          });
+        });
+    };
+
+    const run = () => {
+      attachReceiptInputs();
+      sync();
+    };
+
+    run();
+    const observer = new MutationObserver(run);
+    observer.observe(document.body, { childList: true, subtree: true });
+    const timer = window.setInterval(run, 500);
+    window.addEventListener("storage", run);
+    window.addEventListener(CHANNEL_EVENT, run);
+    window.addEventListener(INCLUDE_EVENT, run);
 
     return () => {
       observer.disconnect();
       window.clearInterval(timer);
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(CHANNEL_EVENT, sync);
+      window.removeEventListener("storage", run);
+      window.removeEventListener(CHANNEL_EVENT, run);
+      window.removeEventListener(INCLUDE_EVENT, run);
     };
   }, []);
 
@@ -362,6 +361,7 @@ export default function ReceiptChannelSummary() {
       cielo: amountBy(periodEntries, "BRADESCO", "CIELO"),
       pix: amountBy(periodEntries, "BRADESCO", "PIX_RECEBIDO_CLIENTE"),
     };
+
     return {
       brasil: { ...brasil, total: brasil.cielo + brasil.pix },
       bradesco: { ...bradesco, total: bradesco.cielo + bradesco.pix },
@@ -373,37 +373,11 @@ export default function ReceiptChannelSummary() {
     };
   }, [periodEntries]);
 
-  useEffect(() => {
-    if (normalize(filter.view) !== "VISAO GERAL") return;
-
-    const baseReceived = filterReceipts(mainData.receipts ?? [], periodFilter)
-      .reduce((sum, receipt) => sum + receipt.amount, 0);
-    const emitted = filterInvoices(mainData.invoices ?? [], periodFilter)
-      .reduce((sum, invoice) => sum + invoice.grossValue, 0);
-    const canInclude = !periodFilter.client;
-    const adjustedReceived = baseReceived + (includeInTotal && canInclude ? totals.total.total : 0);
-
-    const cards = Array.from(document.querySelectorAll<HTMLElement>(".kpi-card"));
-    const receivedCard = cards.find((card) => normalize(card.querySelector(".kpi-title")?.textContent).includes("RECEBIDO"));
-    const receivedValue = receivedCard?.querySelector<HTMLElement>(":scope > strong");
-    const receivedDetail = receivedCard?.querySelector<HTMLElement>(".kpi-detail");
-    if (receivedValue) receivedValue.textContent = currency.format(adjustedReceived);
-    if (receivedDetail) {
-      const count = filterReceipts(mainData.receipts ?? [], periodFilter).length;
-      receivedDetail.textContent = includeInTotal && canInclude
-        ? `${count.toLocaleString("pt-BR")} lançamentos + Cielo/PIX`
-        : `${count.toLocaleString("pt-BR")} lançamentos`;
-    }
-
-    const openCard = cards.find((card) => normalize(card.querySelector(".kpi-title")?.textContent).includes("A RECEBER"));
-    const openValue = openCard?.querySelector<HTMLElement>(":scope > strong");
-    if (openValue) openValue.textContent = currency.format(emitted - adjustedReceived);
-  }, [filter.view, includeInTotal, mainData, periodFilter, totals.total.total]);
-
   function toggleInclude() {
     const next = !includeInTotal;
-    setIncludeInTotal(next);
     window.localStorage.setItem(INCLUDE_STORAGE_KEY, String(next));
+    setIncludeInTotal(next);
+    window.dispatchEvent(new CustomEvent(INCLUDE_EVENT, { detail: { included: next } }));
   }
 
   if (!target) return null;
@@ -422,10 +396,10 @@ export default function ReceiptChannelSummary() {
           role="switch"
           aria-checked={includeInTotal}
           onClick={toggleInclude}
-          title={periodFilter.client ? "Limpe o filtro de cliente para incluir valores não atribuídos" : "Incluir ou retirar estes valores do Total recebido"}
+          title={periodFilter.client ? "Limpe o filtro de cliente para incluir valores não atribuídos" : "Incluir ou retirar estes valores do total recebido"}
         >
           <i><span /></i>
-          <b>Incluir no total recebido</b>
+          <b>{includeInTotal ? "Incluído no total recebido" : "Fora do total recebido"}</b>
         </button>
       </div>
 
@@ -443,12 +417,14 @@ export default function ReceiptChannelSummary() {
       )}
 
       {periodFilter.client && includeInTotal && (
-        <p className="receipt-channel-note">Cielo e PIX não entram no total enquanto houver um cliente selecionado, pois esses lançamentos não identificam o cliente.</p>
+        <p className="receipt-channel-note">Cielo e PIX ficam fora do total enquanto houver um cliente selecionado, porque esses lançamentos não identificam o cliente.</p>
       )}
 
       <style jsx global>{`
         .receipt-channel-summary {
-          margin: 18px 0 0; padding: 15px; border-top: 1px solid #edf0f5;
+          margin: 18px 0 0;
+          padding: 15px;
+          border-top: 1px solid #edf0f5;
           background: linear-gradient(180deg, rgba(247,249,253,.2), #f8faff);
           border-radius: 0 0 12px 12px;
         }
@@ -457,13 +433,23 @@ export default function ReceiptChannelSummary() {
         .receipt-channel-heading h3 { margin: 3px 0 0; color: #202738; font-size: 13px; }
         .receipt-channel-heading p { margin: 3px 0 0; color: #858ea1; font-size: 9px; }
         .receipt-channel-toggle {
-          min-width: 158px; display: flex; align-items: center; justify-content: flex-end; gap: 7px;
-          padding: 5px 7px; border: 0; border-radius: 8px; color: #747e92; background: transparent;
-          font-size: 9px; font-weight: 800; cursor: pointer;
+          min-width: 174px;
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 7px;
+          padding: 6px 8px;
+          border: 1px solid #e3e7ef;
+          border-radius: 9px;
+          color: #747e92;
+          background: #fff;
+          font-size: 9px;
+          font-weight: 800;
+          cursor: pointer;
         }
         .receipt-channel-toggle i { width: 29px; height: 17px; padding: 2px; border-radius: 999px; background: #d9dee8; transition: .18s ease; }
         .receipt-channel-toggle i span { display: block; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(30,40,65,.2); transition: .18s ease; }
-        .receipt-channel-toggle.is-active { color: #4258db; }
+        .receipt-channel-toggle.is-active { color: #4258db; border-color: #cfd6ff; background: #f5f6ff; }
         .receipt-channel-toggle.is-active i { background: #5d72f6; }
         .receipt-channel-toggle.is-active i span { transform: translateX(12px); }
         .receipt-channel-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
@@ -480,7 +466,7 @@ export default function ReceiptChannelSummary() {
         .receipt-channel-note { margin: 9px 0 0; color: #9b6b18; font-size: 8px; }
         @media (max-width: 900px) {
           .receipt-channel-heading { align-items: flex-start; flex-direction: column; }
-          .receipt-channel-toggle { padding-left: 0; justify-content: flex-start; }
+          .receipt-channel-toggle { justify-content: flex-start; }
           .receipt-channel-grid { grid-template-columns: 1fr; }
         }
         @media print { .receipt-channel-toggle { display: none; } }
