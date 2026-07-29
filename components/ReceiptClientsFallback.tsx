@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ImportState, Receipt } from "@/lib/types";
 import { currency, percent } from "@/lib/format";
+import { canonicalClientName, clientKey, sameClientName } from "@/lib/clientNames";
 
 const STORAGE_KEY = "financial-analytics-data-v1";
 
@@ -18,30 +19,6 @@ type ClientRow = {
   value: number;
 };
 
-function normalizeRaw(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isAmaUbsAlias(value: string) {
-  const tokens = new Set(normalizeRaw(value).split(" ").filter(Boolean));
-  return tokens.has("AMA") && tokens.has("UBS");
-}
-
-function normalize(value: string) {
-  if (isAmaUbsAlias(value)) return "SAO MATEUS";
-
-  return normalizeRaw(value)
-    .replace(/\b(LTDA|S A|SA|EIRELI|CNPJ)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function displayClient(receipt: Receipt) {
   const candidate = (receipt.clientHint || receipt.description || "Cliente não identificado")
     .replace(/\s*[-–—]?\s*NFS?[\s.:-].*$/i, "")
@@ -49,19 +26,7 @@ function displayClient(receipt: Receipt) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (isAmaUbsAlias(candidate)) return "SÃO MATEUS";
-  return candidate || "Cliente não identificado";
-}
-
-function nameMatches(client: string, hint: string) {
-  const a = normalize(client);
-  const b = normalize(hint);
-  if (!a || !b) return false;
-  if (a === b || a.includes(b) || b.includes(a)) return true;
-  const aTokens = new Set(a.split(" ").filter((token) => token.length > 2));
-  const bTokens = b.split(" ").filter((token) => token.length > 2);
-  const common = bTokens.filter((token) => aTokens.has(token)).length;
-  return common >= Math.min(2, Math.max(1, Math.floor(bTokens.length * 0.45)));
+  return canonicalClientName(candidate) || "Cliente não identificado";
 }
 
 function parseData(raw: string | null): ImportState {
@@ -99,14 +64,22 @@ function setNativeSelect(select: HTMLSelectElement, value: string) {
 function addReceiptClientOptions(data: ImportState) {
   const select = document.querySelector<HTMLSelectElement>(".client-filter select");
   if (!select) return;
-  const existing = new Set(Array.from(select.options).map((option) => normalize(option.value)));
+
+  const existing = new Set(
+    Array.from(select.options)
+      .map((option) => clientKey(option.textContent?.trim() || option.value))
+      .filter(Boolean),
+  );
+
   const clients = [...new Map(data.receipts.map((receipt) => {
     const name = displayClient(receipt);
-    return [normalize(name), name] as const;
-  })).values()].filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    return [clientKey(name), name] as const;
+  })).values()]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   clients.forEach((client) => {
-    const key = normalize(client);
+    const key = clientKey(client);
     if (!key || existing.has(key)) return;
     const option = document.createElement("option");
     option.value = client;
@@ -162,17 +135,17 @@ export default function ReceiptClientsFallback() {
 
   const filteredInvoiceCount = useMemo(() => data.invoices.filter((invoice) =>
     inPeriod(invoice.emissionDate, filters)
-    && (!filters.client || normalize(invoice.clientName) === normalize(filters.client)),
+    && (!filters.client || sameClientName(invoice.clientName, filters.client)),
   ).length, [data.invoices, filters]);
 
   const rows = useMemo(() => {
     const grouped = new Map<string, ClientRow>();
     data.receipts
       .filter((receipt) => inPeriod(receipt.receiptDate, filters))
-      .filter((receipt) => !filters.client || nameMatches(filters.client, displayClient(receipt)))
+      .filter((receipt) => !filters.client || sameClientName(filters.client, displayClient(receipt)))
       .forEach((receipt) => {
         const name = displayClient(receipt);
-        const key = normalize(name) || name;
+        const key = clientKey(name) || name;
         const current = grouped.get(key) ?? { name, value: 0 };
         current.value += receipt.amount;
         grouped.set(key, current);
@@ -220,16 +193,19 @@ export default function ReceiptClientsFallback() {
                 const participation = total ? item.value / total : 0;
                 return (
                   <tr
-                    key={`${normalize(item.name)}-${index}`}
+                    key={`${clientKey(item.name)}-${index}`}
                     className="clickable-row"
                     onClick={() => {
                       const select = document.querySelector<HTMLSelectElement>(".client-filter select");
                       if (select) {
                         addReceiptClientOptions(data);
-                        setNativeSelect(select, item.name);
+                        const matchingOption = Array.from(select.options).find((option) =>
+                          sameClientName(option.textContent?.trim() || option.value, item.name),
+                        );
+                        setNativeSelect(select, matchingOption?.value || item.name);
                       }
                       const overviewButton = Array.from(document.querySelectorAll<HTMLButtonElement>(".sidebar nav button"))
-                        .find((button) => normalize(button.textContent ?? "") === "VISAO GERAL");
+                        .find((button) => (button.textContent ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim() === "VISAO GERAL");
                       overviewButton?.click();
                     }}
                   >
