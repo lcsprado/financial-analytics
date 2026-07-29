@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { canonicalClientName, clientKey } from "@/lib/clientNames";
@@ -207,61 +207,100 @@ function MultiClientControl({
     applySelection(next);
   }
 
+  function navigateClient(direction: -1 | 1) {
+    if (!options.length) return;
+
+    const anchor = selected[selected.length - 1] ?? "";
+    const currentIndex = anchor
+      ? options.findIndex((option) => keyForScope(option.value, scope) === keyForScope(anchor, scope))
+      : -1;
+    const nextIndex = currentIndex < 0
+      ? (direction > 0 ? 0 : options.length - 1)
+      : (currentIndex + direction + options.length) % options.length;
+
+    applySelection([options[nextIndex].value]);
+    setOpen(false);
+    setQuery("");
+  }
+
   const summary = selectionSummary(selected, scope);
   const countLabel = selected.length ? `${selected.length}/${options.length}` : `${options.length}`;
 
   return (
-    <div className="multi-client-filter" ref={rootRef}>
-      <button
-        type="button"
-        className={`multi-client-trigger ${open ? "is-open" : ""}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span title={summary}>{summary}</span>
-        <em>{countLabel}</em>
-        <ChevronDown size={15} />
-      </button>
+    <div className="multi-client-navigation" ref={rootRef}>
+      <div className="multi-client-filter">
+        <button
+          type="button"
+          className={`multi-client-trigger ${open ? "is-open" : ""}`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <span title={summary}>{summary}</span>
+          <em>{countLabel}</em>
+          <ChevronDown size={15} />
+        </button>
 
-      {open && (
-        <div className="multi-client-popover">
-          <div className="multi-client-search">
-            <Search size={15} />
-            <input
-              ref={searchRef}
-              type="search"
-              value={query}
-              placeholder="Buscar cliente"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            {query && (
-              <button type="button" aria-label="Limpar busca" onClick={() => setQuery("")}>
-                <X size={14} />
-              </button>
-            )}
-          </div>
+        {open && (
+          <div className="multi-client-popover">
+            <div className="multi-client-search">
+              <Search size={15} />
+              <input
+                ref={searchRef}
+                type="search"
+                value={query}
+                placeholder="Buscar cliente"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              {query && (
+                <button type="button" aria-label="Limpar busca" onClick={() => setQuery("")}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
 
-          <div className="multi-client-toolbar">
-            <span>{selected.length ? `${selected.length} selecionado${selected.length > 1 ? "s" : ""}` : "Nenhum selecionado"}</span>
-            <button type="button" onClick={() => applySelection([])} disabled={!selected.length}>Limpar seleção</button>
-          </div>
+            <div className="multi-client-toolbar">
+              <span>{selected.length ? `${selected.length} selecionado${selected.length > 1 ? "s" : ""}` : "Nenhum selecionado"}</span>
+              <button type="button" onClick={() => applySelection([])} disabled={!selected.length}>Limpar seleção</button>
+            </div>
 
-          <div className="multi-client-list" role="listbox" aria-multiselectable="true">
-            {visibleOptions.map((option) => {
-              const checked = selectedKeys.has(keyForScope(option.value, scope));
-              return (
-                <label key={keyForScope(option.value, scope)} className={checked ? "is-selected" : ""}>
-                  <input type="checkbox" checked={checked} onChange={() => toggle(option)} />
-                  <span className="multi-client-checkbox"><Check size={12} /></span>
-                  <span title={option.label}>{option.label}</span>
-                </label>
-              );
-            })}
-            {!visibleOptions.length && <p>Nenhum cliente encontrado.</p>}
+            <div className="multi-client-list" role="listbox" aria-multiselectable="true">
+              {visibleOptions.map((option) => {
+                const checked = selectedKeys.has(keyForScope(option.value, scope));
+                return (
+                  <label key={keyForScope(option.value, scope)} className={checked ? "is-selected" : ""}>
+                    <input type="checkbox" checked={checked} onChange={() => toggle(option)} />
+                    <span className="multi-client-checkbox"><Check size={12} /></span>
+                    <span title={option.label}>{option.label}</span>
+                  </label>
+                );
+              })}
+              {!visibleOptions.length && <p>Nenhum cliente encontrado.</p>}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      <div className="multi-client-arrows" role="group" aria-label="Navegar entre clientes">
+        <button
+          type="button"
+          aria-label="Cliente anterior"
+          title="Cliente anterior"
+          disabled={!options.length}
+          onClick={() => navigateClient(-1)}
+        >
+          <ChevronUp size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label="Próximo cliente"
+          title="Próximo cliente"
+          disabled={!options.length}
+          onClick={() => navigateClient(1)}
+        >
+          <ChevronDown size={13} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -326,7 +365,11 @@ export default function ScopedClientFilterEnhancer() {
       <style jsx global>{`
         .client-filter-navigation { display: none !important; }
         .client-filter .select-wrap { width: 292px !important; overflow: visible !important; }
-        .multi-client-filter { position: relative; width: 292px; }
+        .multi-client-navigation {
+          width: 292px; display: grid; grid-template-columns: minmax(0, 1fr) 32px;
+          gap: 5px; align-items: stretch;
+        }
+        .multi-client-filter { position: relative; min-width: 0; }
         .multi-client-trigger {
           width: 100%; height: 34px; padding: 0 9px 0 11px; display: grid;
           grid-template-columns: minmax(0, 1fr) auto 16px; gap: 7px; align-items: center;
@@ -343,6 +386,22 @@ export default function ScopedClientFilterEnhancer() {
         }
         .multi-client-trigger svg { transition: transform .16s ease; }
         .multi-client-trigger.is-open svg { transform: rotate(180deg); }
+        .multi-client-arrows {
+          height: 34px; display: grid; grid-template-rows: repeat(2, 1fr); gap: 2px;
+        }
+        .multi-client-arrows button {
+          min-width: 32px; padding: 0; display: grid; place-items: center;
+          border: 1px solid #e1e5ee; color: #687288; background: linear-gradient(#fff, #f6f8fb);
+          box-shadow: 0 1px 2px rgba(35, 45, 70, .06); transition: .16s ease;
+        }
+        .multi-client-arrows button:first-child { border-radius: 7px 7px 4px 4px; }
+        .multi-client-arrows button:last-child { border-radius: 4px 4px 7px 7px; }
+        .multi-client-arrows button:hover:not(:disabled) {
+          color: #fff; border-color: #5d72f6; background: #5d72f6;
+          box-shadow: 0 2px 6px rgba(93, 114, 246, .24);
+        }
+        .multi-client-arrows button:active:not(:disabled) { transform: translateY(1px); }
+        .multi-client-arrows button:disabled { opacity: .38; cursor: not-allowed; }
         .multi-client-popover {
           position: absolute; z-index: 1200; top: calc(100% + 7px); right: 0;
           width: min(410px, calc(100vw - 30px)); padding: 9px;
@@ -377,10 +436,10 @@ export default function ScopedClientFilterEnhancer() {
         .multi-client-list label.is-selected .multi-client-checkbox { color: #fff; border-color: #5d72f6; background: #5d72f6; }
         .multi-client-list > p { margin: 18px 8px; color: #929aac; font-size: 11px; text-align: center; }
         @media (max-width: 760px) {
-          .client-filter, .client-filter .select-wrap, .multi-client-filter { width: 100% !important; }
+          .client-filter, .client-filter .select-wrap, .multi-client-navigation { width: 100% !important; }
           .multi-client-popover { left: 0; right: auto; }
         }
-        @media print { .multi-client-filter { display: none !important; } }
+        @media print { .multi-client-navigation { display: none !important; } }
       `}</style>
       {target && select ? createPortal(<MultiClientControl select={select} options={options} scope={scope} />, target) : null}
     </>
