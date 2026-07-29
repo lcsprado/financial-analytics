@@ -17,6 +17,8 @@ const GENERIC_CLIENT_TERMS = new Set([
   "DOS",
 ]);
 
+export const SAO_MATEUS_CANONICAL_NAME = "FUNDAÇÃO ABC | SÃO MATEUS";
+
 export function normalizeClientText(value: string) {
   return value
     .normalize("NFD")
@@ -27,24 +29,24 @@ export function normalizeClientText(value: string) {
     .trim();
 }
 
-function isMateusAlias(value: string) {
+function isSaoMateusAlias(value: string) {
   const tokens = new Set(normalizeClientText(value).split(" ").filter(Boolean));
-  const isAmaUbs = tokens.has("AMA") && tokens.has("UBS");
+  const isAmaOrUbs = tokens.has("AMA") || tokens.has("UBS");
   const mentionsMateus = tokens.has("MATEUS") || tokens.has("MATHEUS");
-  return isAmaUbs || mentionsMateus;
+  return isAmaOrUbs || mentionsMateus;
 }
 
 export function canonicalClientName(value: string) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (!cleaned) return "";
-  if (isMateusAlias(cleaned)) return "MATEUS";
+  if (isSaoMateusAlias(cleaned)) return SAO_MATEUS_CANONICAL_NAME;
   return cleaned;
 }
 
 export function clientKey(value: string) {
   const canonical = canonicalClientName(value);
   if (!canonical) return "";
-  if (canonical === "MATEUS") return canonical;
+  if (canonical === SAO_MATEUS_CANONICAL_NAME) return "FUNDACAO ABC SAO MATEUS";
 
   return normalizeClientText(canonical)
     .split(" ")
