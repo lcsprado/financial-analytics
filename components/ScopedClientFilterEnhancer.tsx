@@ -1,9 +1,10 @@
 "use client";
 
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { canonicalClientName, clientKey } from "@/lib/clientNames";
+import { joinClientSelection, splitClientSelection } from "@/lib/clientSelection";
 import { canonicalReceiptClientName, receiptClientKey } from "@/lib/receiptClientNames";
 import type { ImportState } from "@/lib/types";
 
@@ -68,17 +69,20 @@ function buildOptions(data: ImportState, scope: Scope): ClientOption[] {
   return [...grouped.values()].sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 }
 
-function setNativeSelect(select: HTMLSelectElement, value: string) {
+function setNativeSelect(select: HTMLSelectElement, value: string, dispatch = true) {
   const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
   if (setter) setter.call(select, value);
   else select.value = value;
-  select.dispatchEvent(new Event("change", { bubbles: true }));
+  if (dispatch) select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function ensureNativeOption(select: HTMLSelectElement, option: ClientOption, scope: Scope) {
   const optionKey = keyForScope(option.value, scope);
-  const existing = Array.from(select.options).find((item) => keyForScope(item.value, scope) === optionKey);
+  const existing = Array.from(select.options).find((item) =>
+    item.dataset.multiClient !== "true" && keyForScope(item.value, scope) === optionKey,
+  );
   if (existing) return existing.value;
+
   const native = document.createElement("option");
   native.value = option.value;
   native.textContent = option.label;
@@ -87,86 +91,177 @@ function ensureNativeOption(select: HTMLSelectElement, option: ClientOption, sco
   return native.value;
 }
 
-function ScopedControl({ select, options, scope }: { select: HTMLSelectElement; options: ClientOption[]; scope: Scope }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [selectedValue, setSelectedValue] = useState(select.value);
-  const [text, setText] = useState(() => select.value ? labelForScope(select.value, scope) : "");
-  const listId = `scoped-client-filter-${useId().replace(/:/g, "")}`;
+function selectionSummary(selected: string[], scope: Scope) {
+  if (!selected.length) return "Todos os clientes";
+  if (selected.length === 1) return labelForScope(selected[0], scope);
+  return `${selected.length} clientes selecionados`;
+}
+
+function ensureSelectionValue(
+  select: HTMLSelectElement,
+  selected: string[],
+  options: ClientOption[],
+  scope: Scope,
+) {
+  const encoded = joinClientSelection(selected);
+
+  Array.from(select.options)
+    .filter((option) => option.dataset.multiClient === "true" && option.value !== encoded)
+    .forEach((option) => option.remove());
+
+  if (!selected.length) return "";
+
+  if (selected.length === 1) {
+    const key = keyForScope(selected[0], scope);
+    const option = options.find((item) => keyForScope(item.value, scope) === key)
+      ?? { label: labelForScope(selected[0], scope), value: selected[0] };
+    return ensureNativeOption(select, option, scope);
+  }
+
+  let native = Array.from(select.options).find((option) => option.value === encoded);
+  if (!native) {
+    native = document.createElement("option");
+    native.value = encoded;
+    native.dataset.multiClient = "true";
+    select.appendChild(native);
+  }
+  native.textContent = selectionSummary(selected, scope);
+  return native.value;
+}
+
+function MultiClientControl({
+  select,
+  options,
+  scope,
+}: {
+  select: HTMLSelectElement;
+  options: ClientOption[];
+  scope: Scope;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<string[]>(() => splitClientSelection(select.value));
 
   useEffect(() => {
     const sync = () => {
-      setSelectedValue(select.value);
-      if (document.activeElement !== inputRef.current) {
-        setText(select.value ? labelForScope(select.value, scope) : "");
-      }
+      const next = splitClientSelection(select.value);
+      const nextSignature = joinClientSelection(next);
+      setSelected((current) => joinClientSelection(current) === nextSignature ? current : next);
     };
     select.addEventListener("change", sync);
     sync();
     return () => select.removeEventListener("change", sync);
-  }, [select, scope]);
+  }, [select]);
 
-  const selectedKey = keyForScope(selectedValue, scope);
-  const selectedIndex = options.findIndex((option) => keyForScope(option.value, scope) === selectedKey);
-  const position = selectedIndex >= 0 ? `${selectedIndex + 1}/${options.length}` : `${options.length}`;
+  useEffect(() => {
+    const nativeValue = ensureSelectionValue(select, selected, options, scope);
+    if (select.value !== nativeValue) setNativeSelect(select, nativeValue, false);
+  }, [select, selected, options, scope]);
 
-  function choose(option: ClientOption) {
-    const value = ensureNativeOption(select, option, scope);
-    setText(option.label);
-    setNativeSelect(select, value);
-    inputRef.current?.blur();
+  useEffect(() => {
+    if (!open) return;
+    searchRef.current?.focus();
+
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  const selectedKeys = useMemo(
+    () => new Set(selected.map((value) => keyForScope(value, scope)).filter(Boolean)),
+    [selected, scope],
+  );
+
+  const visibleOptions = useMemo(() => {
+    const normalizedQuery = normalize(query);
+    if (!normalizedQuery) return options;
+    return options.filter((option) => normalize(option.label).includes(normalizedQuery));
+  }, [options, query]);
+
+  function applySelection(next: string[]) {
+    const unique = [...new Map(next.map((value) => [keyForScope(value, scope), value])).values()]
+      .filter(Boolean);
+    const nativeValue = ensureSelectionValue(select, unique, options, scope);
+    setSelected(unique);
+    setNativeSelect(select, nativeValue);
   }
 
-  function onTextChange(value: string) {
-    setText(value);
-    if (!value.trim()) {
-      if (select.value) setNativeSelect(select, "");
-      return;
-    }
-    const normalized = normalize(value);
-    const exact = options.find((option) => normalize(option.label) === normalized);
-    if (exact) choose(exact);
-    else if (select.value) setNativeSelect(select, "");
+  function toggle(option: ClientOption) {
+    const key = keyForScope(option.value, scope);
+    const exists = selectedKeys.has(key);
+    const next = exists
+      ? selected.filter((value) => keyForScope(value, scope) !== key)
+      : [...selected, option.value];
+    applySelection(next);
   }
 
-  function navigate(direction: -1 | 1) {
-    if (!options.length) return;
-    const index = selectedIndex < 0
-      ? (direction > 0 ? 0 : options.length - 1)
-      : (selectedIndex + direction + options.length) % options.length;
-    choose(options[index]);
-  }
+  const summary = selectionSummary(selected, scope);
+  const countLabel = selected.length ? `${selected.length}/${options.length}` : `${options.length}`;
 
   return (
-    <div className="scoped-client-navigation">
-      <div className="scoped-client-search">
-        <input
-          ref={inputRef}
-          type="search"
-          list={listId}
-          value={text}
-          placeholder="Todos os clientes"
-          aria-label="Buscar cliente"
-          autoComplete="off"
-          onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) => onTextChange(event.target.value)}
-          onBlur={() => window.setTimeout(() => setText(select.value ? labelForScope(select.value, scope) : ""), 100)}
-        />
-        <datalist id={listId}>
-          {options.map((option) => <option key={keyForScope(option.label, scope)} value={option.label} />)}
-        </datalist>
-        {(text || select.value) && (
-          <button type="button" className="scoped-client-clear" aria-label="Limpar cliente" onMouseDown={(event) => event.preventDefault()} onClick={() => {
-            setText("");
-            setNativeSelect(select, "");
-            inputRef.current?.focus();
-          }}>×</button>
-        )}
-        <span className="scoped-client-position">{position}</span>
-      </div>
-      <div className="scoped-client-arrows">
-        <button type="button" aria-label="Cliente anterior" onClick={() => navigate(-1)} disabled={!options.length}><ChevronUp size={14} /></button>
-        <button type="button" aria-label="Próximo cliente" onClick={() => navigate(1)} disabled={!options.length}><ChevronDown size={14} /></button>
-      </div>
+    <div className="multi-client-filter" ref={rootRef}>
+      <button
+        type="button"
+        className={`multi-client-trigger ${open ? "is-open" : ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span title={summary}>{summary}</span>
+        <em>{countLabel}</em>
+        <ChevronDown size={15} />
+      </button>
+
+      {open && (
+        <div className="multi-client-popover">
+          <div className="multi-client-search">
+            <Search size={15} />
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              placeholder="Buscar cliente"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            {query && (
+              <button type="button" aria-label="Limpar busca" onClick={() => setQuery("")}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="multi-client-toolbar">
+            <span>{selected.length ? `${selected.length} selecionado${selected.length > 1 ? "s" : ""}` : "Nenhum selecionado"}</span>
+            <button type="button" onClick={() => applySelection([])} disabled={!selected.length}>Limpar seleção</button>
+          </div>
+
+          <div className="multi-client-list" role="listbox" aria-multiselectable="true">
+            {visibleOptions.map((option) => {
+              const checked = selectedKeys.has(keyForScope(option.value, scope));
+              return (
+                <label key={keyForScope(option.value, scope)} className={checked ? "is-selected" : ""}>
+                  <input type="checkbox" checked={checked} onChange={() => toggle(option)} />
+                  <span className="multi-client-checkbox"><Check size={12} /></span>
+                  <span title={option.label}>{option.label}</span>
+                </label>
+              );
+            })}
+            {!visibleOptions.length && <p>Nenhum cliente encontrado.</p>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -193,6 +288,7 @@ export default function ScopedClientFilterEnhancer() {
         setData(readData(raw));
       }
     };
+
     sync();
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
@@ -210,8 +306,18 @@ export default function ScopedClientFilterEnhancer() {
   useEffect(() => {
     if (!select) return;
     options.forEach((option) => ensureNativeOption(select, option, scope));
-    if (select.value && !options.some((option) => keyForScope(option.value, scope) === keyForScope(select.value, scope))) {
-      setNativeSelect(select, "");
+
+    const current = splitClientSelection(select.value);
+    const valid = current.filter((value) =>
+      options.some((option) => keyForScope(option.value, scope) === keyForScope(value, scope)),
+    );
+
+    if (joinClientSelection(current) !== joinClientSelection(valid)) {
+      const nativeValue = ensureSelectionValue(select, valid, options, scope);
+      setNativeSelect(select, nativeValue);
+    } else {
+      const nativeValue = ensureSelectionValue(select, current, options, scope);
+      if (select.value !== nativeValue) setNativeSelect(select, nativeValue, false);
     }
   }, [select, options, scope]);
 
@@ -219,20 +325,64 @@ export default function ScopedClientFilterEnhancer() {
     <>
       <style jsx global>{`
         .client-filter-navigation { display: none !important; }
-        .scoped-client-navigation { width: 275px; display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 5px; align-items: stretch; }
-        .scoped-client-search { position: relative; min-width: 0; }
-        .scoped-client-search input { width: 100%; height: 34px; padding: 0 67px 0 11px; color: #50596c; background: #f8f9fc; border: 1px solid #e6e9f0; border-radius: 8px; outline: none; font-size: 12px; font-weight: 600; }
-        .scoped-client-search input:focus { border-color: #9aa8fb; box-shadow: 0 0 0 3px rgba(93,114,246,.12); background: #fff; }
-        .scoped-client-search input::-webkit-search-cancel-button { display: none; }
-        .scoped-client-clear { position: absolute; right: 34px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; display: grid; place-items: center; border: 0; background: transparent; color: #7e879b; font-size: 17px; }
-        .scoped-client-position { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); min-width: 25px; padding: 3px 4px; border-radius: 5px; color: #7d879b; background: #edf0f6; font-size: 8px; font-weight: 850; line-height: 1; text-align: center; pointer-events: none; }
-        .scoped-client-arrows { display: grid; grid-template-rows: repeat(2, 1fr); gap: 2px; }
-        .scoped-client-arrows button { min-width: 32px; padding: 0; display: grid; place-items: center; border: 1px solid #e2e6ef; border-radius: 6px; color: #697389; background: #f8f9fc; }
-        .scoped-client-arrows button:hover:not(:disabled) { color: #fff; border-color: #5d72f6; background: #5d72f6; }
-        @media (max-width: 760px) { .scoped-client-navigation { width: 100%; } }
-        @media print { .scoped-client-navigation { display: none !important; } }
+        .client-filter .select-wrap { width: 292px !important; overflow: visible !important; }
+        .multi-client-filter { position: relative; width: 292px; }
+        .multi-client-trigger {
+          width: 100%; height: 34px; padding: 0 9px 0 11px; display: grid;
+          grid-template-columns: minmax(0, 1fr) auto 16px; gap: 7px; align-items: center;
+          color: #50596c; background: #f8f9fc; border: 1px solid #e6e9f0; border-radius: 8px;
+          font-size: 12px; font-weight: 650; text-align: left;
+        }
+        .multi-client-trigger:hover, .multi-client-trigger.is-open {
+          border-color: #9aa8fb; background: #fff; box-shadow: 0 0 0 3px rgba(93,114,246,.1);
+        }
+        .multi-client-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .multi-client-trigger em {
+          min-width: 30px; padding: 3px 5px; border-radius: 5px; color: #727c91;
+          background: #edf0f6; font-size: 8px; font-style: normal; font-weight: 850; text-align: center;
+        }
+        .multi-client-trigger svg { transition: transform .16s ease; }
+        .multi-client-trigger.is-open svg { transform: rotate(180deg); }
+        .multi-client-popover {
+          position: absolute; z-index: 1200; top: calc(100% + 7px); right: 0;
+          width: min(410px, calc(100vw - 30px)); padding: 9px;
+          border: 1px solid #e1e5ed; border-radius: 11px; background: #fff;
+          box-shadow: 0 16px 38px rgba(28,37,61,.17);
+        }
+        .multi-client-search {
+          height: 36px; display: grid; grid-template-columns: 18px minmax(0,1fr) 24px;
+          gap: 6px; align-items: center; padding: 0 8px; border: 1px solid #e6e9f0;
+          border-radius: 8px; background: #f8f9fc; color: #8992a5;
+        }
+        .multi-client-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: #3f4759; font-size: 12px; }
+        .multi-client-search input::-webkit-search-cancel-button { display: none; }
+        .multi-client-search button { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #7c869a; background: transparent; }
+        .multi-client-toolbar { min-height: 31px; padding: 6px 3px 5px; display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #eef0f5; }
+        .multi-client-toolbar span { color: #8a93a5; font-size: 9px; font-weight: 750; }
+        .multi-client-toolbar button { padding: 3px 5px; border: 0; color: #5d72f6; background: transparent; font-size: 9px; font-weight: 800; }
+        .multi-client-toolbar button:disabled { color: #b4bac6; }
+        .multi-client-list { max-height: 270px; padding: 5px 0 1px; overflow-y: auto; overscroll-behavior: contain; }
+        .multi-client-list label {
+          min-height: 34px; padding: 6px 7px; display: grid; grid-template-columns: 18px minmax(0,1fr);
+          gap: 8px; align-items: center; border-radius: 7px; color: #303849; cursor: pointer;
+          font-size: 11px; font-weight: 650;
+        }
+        .multi-client-list label:hover, .multi-client-list label.is-selected { background: #f1f3ff; }
+        .multi-client-list label > input { position: absolute; opacity: 0; pointer-events: none; }
+        .multi-client-list label > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .multi-client-checkbox {
+          width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid #cfd5e1;
+          border-radius: 4px; color: transparent; background: #fff;
+        }
+        .multi-client-list label.is-selected .multi-client-checkbox { color: #fff; border-color: #5d72f6; background: #5d72f6; }
+        .multi-client-list > p { margin: 18px 8px; color: #929aac; font-size: 11px; text-align: center; }
+        @media (max-width: 760px) {
+          .client-filter, .client-filter .select-wrap, .multi-client-filter { width: 100% !important; }
+          .multi-client-popover { left: 0; right: auto; }
+        }
+        @media print { .multi-client-filter { display: none !important; } }
       `}</style>
-      {target && select ? createPortal(<ScopedControl select={select} options={options} scope={scope} />, target) : null}
+      {target && select ? createPortal(<MultiClientControl select={select} options={options} scope={scope} />, target) : null}
     </>
   );
 }
