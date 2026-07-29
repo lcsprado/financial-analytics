@@ -2,11 +2,22 @@ import type { Invoice, PeriodFilter, Receipt } from "./types";
 import { monthLabels } from "./format";
 import { canonicalClientName, likelySameClientName, sameClientName } from "./clientNames";
 import { canonicalReceiptClientName, sameReceiptClientName } from "./receiptClientNames";
+import { splitClientSelection } from "./clientSelection";
 
 function inPeriod(dateValue: string, filter: PeriodFilter) {
   const date = new Date(`${dateValue}T12:00:00`);
   return (filter.year === "all" || date.getFullYear() === filter.year)
     && (filter.month === "all" || date.getMonth() === filter.month);
+}
+
+function matchesInvoiceSelection(selection: string, candidate: string) {
+  const clients = splitClientSelection(selection);
+  return !clients.length || clients.some((client) => sameClientName(client, candidate));
+}
+
+function matchesReceiptSelection(selection: string, candidate: string) {
+  const clients = splitClientSelection(selection);
+  return !clients.length || clients.some((client) => sameReceiptClientName(client, candidate));
 }
 
 function isDemoInvoice(invoice: Invoice) {
@@ -43,12 +54,12 @@ export function getAvailableYears(invoices: Invoice[], receipts: Receipt[]) {
 
 export function filterInvoices(invoices: Invoice[], filter: PeriodFilter) {
   return invoices.filter((invoice) => inPeriod(invoice.emissionDate, filter)
-    && (!filter.client || sameClientName(filter.client, invoice.clientName)));
+    && matchesInvoiceSelection(filter.client, invoice.clientName));
 }
 
 export function filterReceipts(receipts: Receipt[], filter: PeriodFilter) {
   return receipts.filter((receipt) => inPeriod(receipt.receiptDate, filter)
-    && (!filter.client || sameReceiptClientName(filter.client, receipt.clientHint || receipt.description)));
+    && matchesReceiptSelection(filter.client, receipt.clientHint || receipt.description));
 }
 
 export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], filter: PeriodFilter) {
@@ -80,7 +91,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
         const date = new Date(`${item.emissionDate}T12:00:00`);
         return (filter.year === "all" || date.getFullYear() === filter.year)
           && date.getMonth() === monthIndex
-          && (!filter.client || sameClientName(filter.client, item.clientName));
+          && matchesInvoiceSelection(filter.client, item.clientName);
       })
       .reduce((sum, item) => sum + item.grossValue, 0);
     const receivedMonth = active.receipts
@@ -88,7 +99,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
         const date = new Date(`${item.receiptDate}T12:00:00`);
         return (filter.year === "all" || date.getFullYear() === filter.year)
           && date.getMonth() === monthIndex
-          && (!filter.client || sameReceiptClientName(filter.client, item.clientHint || item.description));
+          && matchesReceiptSelection(filter.client, item.clientHint || item.description);
       })
       .reduce((sum, item) => sum + item.amount, 0);
     return { month, monthIndex, emitted: emittedMonth, received: receivedMonth };
