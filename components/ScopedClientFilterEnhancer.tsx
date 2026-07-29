@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { canonicalClientName, clientKey } from "@/lib/clientNames";
+import { canonicalReceiptClientName, receiptClientKey } from "@/lib/receiptClientNames";
 import type { ImportState } from "@/lib/types";
 
 const STORAGE_KEY = "financial-analytics-data-v1";
@@ -44,11 +45,23 @@ function sourceNames(data: ImportState, scope: Scope) {
   return [...invoiceNames, ...receiptNames];
 }
 
+function labelForScope(value: string, scope: Scope) {
+  return scope === "receipts"
+    ? canonicalReceiptClientName(value)
+    : canonicalClientName(value);
+}
+
+function keyForScope(value: string, scope: Scope) {
+  return scope === "receipts"
+    ? receiptClientKey(value)
+    : clientKey(value);
+}
+
 function buildOptions(data: ImportState, scope: Scope): ClientOption[] {
   const grouped = new Map<string, ClientOption>();
   sourceNames(data, scope).forEach((rawName) => {
-    const label = canonicalClientName(rawName);
-    const key = clientKey(label);
+    const label = labelForScope(rawName, scope);
+    const key = keyForScope(label, scope);
     if (!label || !key || grouped.has(key)) return;
     grouped.set(key, { label, value: label });
   });
@@ -62,8 +75,9 @@ function setNativeSelect(select: HTMLSelectElement, value: string) {
   select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function ensureNativeOption(select: HTMLSelectElement, option: ClientOption) {
-  const existing = Array.from(select.options).find((item) => clientKey(item.value) === clientKey(option.value));
+function ensureNativeOption(select: HTMLSelectElement, option: ClientOption, scope: Scope) {
+  const optionKey = keyForScope(option.value, scope);
+  const existing = Array.from(select.options).find((item) => keyForScope(item.value, scope) === optionKey);
   if (existing) return existing.value;
   const native = document.createElement("option");
   native.value = option.value;
@@ -73,30 +87,30 @@ function ensureNativeOption(select: HTMLSelectElement, option: ClientOption) {
   return native.value;
 }
 
-function ScopedControl({ select, options }: { select: HTMLSelectElement; options: ClientOption[] }) {
+function ScopedControl({ select, options, scope }: { select: HTMLSelectElement; options: ClientOption[]; scope: Scope }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedValue, setSelectedValue] = useState(select.value);
-  const [text, setText] = useState(() => select.value ? canonicalClientName(select.value) : "");
+  const [text, setText] = useState(() => select.value ? labelForScope(select.value, scope) : "");
   const listId = `scoped-client-filter-${useId().replace(/:/g, "")}`;
 
   useEffect(() => {
     const sync = () => {
       setSelectedValue(select.value);
       if (document.activeElement !== inputRef.current) {
-        setText(select.value ? canonicalClientName(select.value) : "");
+        setText(select.value ? labelForScope(select.value, scope) : "");
       }
     };
     select.addEventListener("change", sync);
     sync();
     return () => select.removeEventListener("change", sync);
-  }, [select]);
+  }, [select, scope]);
 
-  const selectedKey = clientKey(selectedValue);
-  const selectedIndex = options.findIndex((option) => clientKey(option.value) === selectedKey);
+  const selectedKey = keyForScope(selectedValue, scope);
+  const selectedIndex = options.findIndex((option) => keyForScope(option.value, scope) === selectedKey);
   const position = selectedIndex >= 0 ? `${selectedIndex + 1}/${options.length}` : `${options.length}`;
 
   function choose(option: ClientOption) {
-    const value = ensureNativeOption(select, option);
+    const value = ensureNativeOption(select, option, scope);
     setText(option.label);
     setNativeSelect(select, value);
     inputRef.current?.blur();
@@ -135,10 +149,10 @@ function ScopedControl({ select, options }: { select: HTMLSelectElement; options
           autoComplete="off"
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => onTextChange(event.target.value)}
-          onBlur={() => window.setTimeout(() => setText(select.value ? canonicalClientName(select.value) : ""), 100)}
+          onBlur={() => window.setTimeout(() => setText(select.value ? labelForScope(select.value, scope) : ""), 100)}
         />
         <datalist id={listId}>
-          {options.map((option) => <option key={clientKey(option.label)} value={option.label} />)}
+          {options.map((option) => <option key={keyForScope(option.label, scope)} value={option.label} />)}
         </datalist>
         {(text || select.value) && (
           <button type="button" className="scoped-client-clear" aria-label="Limpar cliente" onMouseDown={(event) => event.preventDefault()} onClick={() => {
@@ -195,11 +209,11 @@ export default function ScopedClientFilterEnhancer() {
 
   useEffect(() => {
     if (!select) return;
-    options.forEach((option) => ensureNativeOption(select, option));
-    if (select.value && !options.some((option) => clientKey(option.value) === clientKey(select.value))) {
+    options.forEach((option) => ensureNativeOption(select, option, scope));
+    if (select.value && !options.some((option) => keyForScope(option.value, scope) === keyForScope(select.value, scope))) {
       setNativeSelect(select, "");
     }
-  }, [select, options]);
+  }, [select, options, scope]);
 
   return (
     <>
@@ -218,7 +232,7 @@ export default function ScopedClientFilterEnhancer() {
         @media (max-width: 760px) { .scoped-client-navigation { width: 100%; } }
         @media print { .scoped-client-navigation { display: none !important; } }
       `}</style>
-      {target && select ? createPortal(<ScopedControl select={select} options={options} />, target) : null}
+      {target && select ? createPortal(<ScopedControl select={select} options={options} scope={scope} />, target) : null}
     </>
   );
 }

@@ -1,6 +1,7 @@
 import type { Invoice, PeriodFilter, Receipt } from "./types";
 import { monthLabels } from "./format";
 import { canonicalClientName, likelySameClientName, sameClientName } from "./clientNames";
+import { canonicalReceiptClientName, sameReceiptClientName } from "./receiptClientNames";
 
 function inPeriod(dateValue: string, filter: PeriodFilter) {
   const date = new Date(`${dateValue}T12:00:00`);
@@ -47,7 +48,7 @@ export function filterInvoices(invoices: Invoice[], filter: PeriodFilter) {
 
 export function filterReceipts(receipts: Receipt[], filter: PeriodFilter) {
   return receipts.filter((receipt) => inPeriod(receipt.receiptDate, filter)
-    && (!filter.client || sameClientName(filter.client, receipt.clientHint)));
+    && (!filter.client || sameReceiptClientName(filter.client, receipt.clientHint || receipt.description)));
 }
 
 export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], filter: PeriodFilter) {
@@ -87,7 +88,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
         const date = new Date(`${item.receiptDate}T12:00:00`);
         return (filter.year === "all" || date.getFullYear() === filter.year)
           && date.getMonth() === monthIndex
-          && (!filter.client || sameClientName(filter.client, item.clientHint));
+          && (!filter.client || sameReceiptClientName(filter.client, item.clientHint || item.description));
       })
       .reduce((sum, item) => sum + item.amount, 0);
     return { month, monthIndex, emitted: emittedMonth, received: receivedMonth };
@@ -102,7 +103,8 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
   });
   const matchedReceipts = active.receipts.filter((receipt) => receipt.invoiceNumbers.some((number) => {
     const candidates = invoiceByNumber.get(number) ?? [];
-    return candidates.some((invoice) => likelySameClientName(invoice.clientName, receipt.clientHint));
+    const receiptClient = canonicalReceiptClientName(receipt.clientHint || receipt.description);
+    return candidates.some((invoice) => likelySameClientName(invoice.clientName, receiptClient));
   })).length;
 
   return {
