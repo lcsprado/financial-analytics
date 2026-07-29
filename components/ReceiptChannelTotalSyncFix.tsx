@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { filterInvoices, filterReceipts } from "@/lib/analytics";
+import { splitClientSelection } from "@/lib/clientSelection";
+import { monthLabels } from "@/lib/format";
 import type { ImportState, PeriodFilter } from "@/lib/types";
 
 const MAIN_STORAGE_KEY = "financial-analytics-data-v1";
@@ -18,10 +20,16 @@ const currency = new Intl.NumberFormat("pt-BR", {
 type ChannelEntry = {
   receiptDate: string;
   amount: number;
+  kind?: string;
+  description?: string;
 };
 
 type ChannelPayload = {
   entries?: ChannelEntry[];
+};
+
+type IncludeEventDetail = {
+  included?: boolean;
 };
 
 function normalize(value: unknown) {
@@ -46,12 +54,20 @@ function readFilter(): PeriodFilter {
   const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".filter-bar select"));
   const year = selects[0]?.value ?? "all";
   const month = selects[1]?.value ?? "all";
+  const client = document.querySelector<HTMLSelectElement>(".client-filter select")?.value ?? "";
 
   return {
     year: year === "all" ? "all" : Number(year),
     month: month === "all" ? "all" : Number(month),
-    client: selects[2]?.value ?? "",
+    client,
   };
+}
+
+function hasSelectedClient(value: string) {
+  return splitClientSelection(value)
+    .map(normalize)
+    .filter((client) => client && client !== "TODOS OS CLIENTES")
+    .length > 0;
 }
 
 function inPeriod(dateValue: string, filter: PeriodFilter) {
@@ -73,8 +89,20 @@ function findKpiCard(titles: string[]) {
   }) ?? null;
 }
 
+function periodLabel(filter: PeriodFilter) {
+  const year = filter.year === "all" ? "todos os anos" : String(filter.year);
+  if (filter.month === "all") return `todos os meses de ${year}`;
+  return `${monthLabels[filter.month]} de ${year}`;
+}
+
+function isCielo(entry: ChannelEntry) {
+  return normalize(entry.kind) === "CIELO" || normalize(entry.description).includes("CIELO");
+}
+
 export default function ReceiptChannelTotalSyncFix() {
   useEffect(() => {
+    let eventIncluded: boolean | null = null;
+
     const apply = () => {
       const view = normalize(document.querySelector<HTMLElement>(".topbar-title h1")?.textContent);
       if (view !== "VISAO GERAL") return;
@@ -82,13 +110,17 @@ export default function ReceiptChannelTotalSyncFix() {
       const mainData = readJson<ImportState>(MAIN_STORAGE_KEY, { invoices: [], receipts: [] });
       const channelData = readJson<ChannelPayload>(CHANNEL_STORAGE_KEY, { entries: [] });
       const filter = readFilter();
-      const includeRequested = window.localStorage.getItem(INCLUDE_STORAGE_KEY) === "true";
-      const canInclude = !filter.client;
+      const storedIncluded = window.localStorage.getItem(INCLUDE_STORAGE_KEY) === "true";
+      const includeRequested = eventIncluded ?? storedIncluded;
+      const canInclude = !hasSelectedClient(filter.client);
 
       const filteredReceipts = filterReceipts(mainData.receipts ?? [], filter);
       const baseReceived = filteredReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
-      const channelTotal = (channelData.entries ?? [])
-        .filter((entry) => inPeriod(entry.receiptDate, filter))
+      const periodEntries = (channelData.entries ?? []).filter((entry) => inPeriod(entry.receiptDate, filter));
+      const cieloTotal = periodEntries
+        .filter(isCielo)
+        .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+      const channelTotal = periodEntries
         .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
       const includedChannelTotal = includeRequested && canInclude ? channelTotal : 0;
       const adjustedReceived = baseReceived + includedChannelTotal;
@@ -119,11 +151,22 @@ export default function ReceiptChannelTotalSyncFix() {
 
       if (balanceCard) {
         setText(balanceCard.querySelector<HTMLElement>(":scope > strong"), currency.format(balance));
-        const detail = balanceCard.querySelector<HTMLElement>(".kpi-detail");
-        if (detail) {
-          setText(detail, balance >= 0 ? "Emitido acima do recebido" : "Recebido acima do emitido");
-        }
+        setText(
+          balanceCard.querySelector<HTMLElement>(".kpi-detail"),
+          balance >= 0 ? "Emitido acima do recebido" : "Recebido acima do emitido",
+        );
       }
+
+      const toggle = document.querySelector<HTMLButtonElement>(".receipt-channel-toggle");
+      if (toggle) {
+        toggle.dataset.cieloPeriodTotal = currency.format(cieloTotal);
+        toggle.dataset.cieloPeriodLabel = periodLabel(filter);
+        toggle.dataset.receivedAdjustedTotal = currency.format(adjustedReceived);
+        toggle.dataset.includeEffective = String(includeRequested && canInclude);
+        toggle.setAttribute("aria-checked", String(includeRequested));
+      }
+
+      eventIncluded = null;
     };
 
     const applySoon = () => {
@@ -133,17 +176,22 @@ export default function ReceiptChannelTotalSyncFix() {
       window.setTimeout(apply, 300);
     };
 
-    applySoon();
+    const onIncludeChange = (event: Event) => {
+      const detail = (event as CustomEvent<IncludeEventDetail>).detail;
+      if (typeof detail?.included === "boolean") eventIncluded = detail.included;
+      applySoon();
+    };
 
-    const timer = window.setInterval(apply, 300);
-    const observer = new MutationObserver(apply);
+    applySoon();
+    const timer = window.setInterval(apply, 350);
+    const observer = new MutationObserver(applySoon);
     observer.observe(document.body, { childList: true, subtree: true });
 
     document.addEventListener("click", applySoon, true);
     document.addEventListener("change", applySoon, true);
     window.addEventListener("storage", applySoon);
     window.addEventListener(CHANNEL_EVENT, applySoon);
-    window.addEventListener(INCLUDE_EVENT, applySoon);
+    window.addEventListener(INCLUDE_EVENT, onIncludeChange);
 
     return () => {
       window.clearInterval(timer);
@@ -152,9 +200,57 @@ export default function ReceiptChannelTotalSyncFix() {
       document.removeEventListener("change", applySoon, true);
       window.removeEventListener("storage", applySoon);
       window.removeEventListener(CHANNEL_EVENT, applySoon);
-      window.removeEventListener(INCLUDE_EVENT, applySoon);
+      window.removeEventListener(INCLUDE_EVENT, onIncludeChange);
     };
   }, []);
 
-  return null;
+  return (
+    <style jsx global>{`
+      .receipt-channel-heading {
+        padding-bottom: 30px;
+      }
+
+      .receipt-channel-toggle {
+        position: relative;
+      }
+
+      .receipt-channel-toggle::after {
+        content: "Cielo — " attr(data-cielo-period-label) ": " attr(data-cielo-period-total);
+        position: absolute;
+        top: calc(100% + 7px);
+        right: 0;
+        width: max-content;
+        max-width: 230px;
+        color: #68738a;
+        font-size: 9px;
+        font-weight: 750;
+        line-height: 1.25;
+        text-align: right;
+        white-space: normal;
+        pointer-events: none;
+      }
+
+      .receipt-channel-toggle[data-include-effective="true"]::after {
+        color: #4258db;
+      }
+
+      @media (max-width: 900px) {
+        .receipt-channel-heading {
+          padding-bottom: 34px;
+        }
+
+        .receipt-channel-toggle::after {
+          right: auto;
+          left: 0;
+          text-align: left;
+        }
+      }
+
+      @media print {
+        .receipt-channel-heading {
+          padding-bottom: 0;
+        }
+      }
+    `}</style>
+  );
 }
