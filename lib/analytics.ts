@@ -1,52 +1,11 @@
 import type { Invoice, PeriodFilter, Receipt } from "./types";
 import { monthLabels } from "./format";
+import { canonicalClientName, likelySameClientName, sameClientName } from "./clientNames";
 
 function inPeriod(dateValue: string, filter: PeriodFilter) {
   const date = new Date(`${dateValue}T12:00:00`);
   return (filter.year === "all" || date.getFullYear() === filter.year)
     && (filter.month === "all" || date.getMonth() === filter.month);
-}
-
-function normalizeRawName(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// Regra de negócio: todas as unidades AMA/UBS pertencem ao cliente São Mateus.
-function isAmaUbsAlias(value: string) {
-  const tokens = new Set(normalizeRawName(value).split(" ").filter(Boolean));
-  return tokens.has("AMA") && tokens.has("UBS");
-}
-
-function normalizeName(value: string) {
-  if (isAmaUbsAlias(value)) return "SAO MATEUS";
-
-  return normalizeRawName(value)
-    .replace(/\b(LTDA|S A|SA|EIRELI|CNPJ|MUNICIPIO|PREFEITURA|FUNDO|FUNDACAO|INSTITUTO|ASSOCIACAO|HOSPITAL)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function sameClient(client: string, candidate: string) {
-  const a = normalizeName(client);
-  const b = normalizeName(candidate);
-  return Boolean(a && b && a === b);
-}
-
-function nameMatches(client: string, hint: string) {
-  const a = normalizeName(client);
-  const b = normalizeName(hint);
-  if (!a || !b) return true;
-  if (a === b || a.includes(b) || b.includes(a)) return true;
-  const aTokens = new Set(a.split(" ").filter((token) => token.length > 2));
-  const bTokens = b.split(" ").filter((token) => token.length > 2);
-  const common = bTokens.filter((token) => aTokens.has(token)).length;
-  return common >= Math.min(2, Math.max(1, Math.floor(bTokens.length * 0.45)));
 }
 
 function isDemoInvoice(invoice: Invoice) {
@@ -83,12 +42,12 @@ export function getAvailableYears(invoices: Invoice[], receipts: Receipt[]) {
 
 export function filterInvoices(invoices: Invoice[], filter: PeriodFilter) {
   return invoices.filter((invoice) => inPeriod(invoice.emissionDate, filter)
-    && (!filter.client || sameClient(filter.client, invoice.clientName)));
+    && (!filter.client || sameClientName(filter.client, invoice.clientName)));
 }
 
 export function filterReceipts(receipts: Receipt[], filter: PeriodFilter) {
   return receipts.filter((receipt) => inPeriod(receipt.receiptDate, filter)
-    && (!filter.client || nameMatches(filter.client, receipt.clientHint)));
+    && (!filter.client || sameClientName(filter.client, receipt.clientHint)));
 }
 
 export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], filter: PeriodFilter) {
@@ -100,7 +59,10 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
   const ticket = filteredInvoices.length ? emitted / filteredInvoices.length : 0;
 
   const byClient = new Map<string, number>();
-  filteredInvoices.forEach((item) => byClient.set(item.clientName, (byClient.get(item.clientName) ?? 0) + item.grossValue));
+  filteredInvoices.forEach((item) => {
+    const client = canonicalClientName(item.clientName) || item.clientName;
+    byClient.set(client, (byClient.get(client) ?? 0) + item.grossValue);
+  });
   const topClients = [...byClient.entries()]
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
@@ -117,7 +79,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
         const date = new Date(`${item.emissionDate}T12:00:00`);
         return (filter.year === "all" || date.getFullYear() === filter.year)
           && date.getMonth() === monthIndex
-          && (!filter.client || sameClient(filter.client, item.clientName));
+          && (!filter.client || sameClientName(filter.client, item.clientName));
       })
       .reduce((sum, item) => sum + item.grossValue, 0);
     const receivedMonth = active.receipts
@@ -125,7 +87,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
         const date = new Date(`${item.receiptDate}T12:00:00`);
         return (filter.year === "all" || date.getFullYear() === filter.year)
           && date.getMonth() === monthIndex
-          && (!filter.client || nameMatches(filter.client, item.clientHint));
+          && (!filter.client || sameClientName(filter.client, item.clientHint));
       })
       .reduce((sum, item) => sum + item.amount, 0);
     return { month, monthIndex, emitted: emittedMonth, received: receivedMonth };
@@ -140,7 +102,7 @@ export function calculateDashboard(invoices: Invoice[], receipts: Receipt[], fil
   });
   const matchedReceipts = active.receipts.filter((receipt) => receipt.invoiceNumbers.some((number) => {
     const candidates = invoiceByNumber.get(number) ?? [];
-    return candidates.some((invoice) => nameMatches(invoice.clientName, receipt.clientHint));
+    return candidates.some((invoice) => likelySameClientName(invoice.clientName, receipt.clientHint));
   })).length;
 
   return {
