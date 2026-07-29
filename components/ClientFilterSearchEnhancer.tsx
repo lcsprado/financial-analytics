@@ -3,6 +3,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { canonicalClientName, clientKey } from "@/lib/clientNames";
 
 type ClientOption = {
   label: string;
@@ -17,13 +18,24 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
+function optionLabel(option: HTMLOptionElement) {
+  const original = option.textContent?.trim() || option.value;
+  return canonicalClientName(original) || original;
+}
+
 function readOptions(select: HTMLSelectElement): ClientOption[] {
-  return Array.from(select.options)
+  const grouped = new Map<string, ClientOption>();
+
+  Array.from(select.options)
     .filter((option) => option.value)
-    .map((option) => ({
-      value: option.value,
-      label: option.textContent?.trim() || option.value,
-    }));
+    .forEach((option) => {
+      const label = optionLabel(option);
+      const key = clientKey(label) || normalizeSearch(label);
+      if (!key || grouped.has(key)) return;
+      grouped.set(key, { value: option.value, label });
+    });
+
+  return [...grouped.values()].sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 }
 
 function changeNativeSelect(select: HTMLSelectElement, value: string) {
@@ -38,15 +50,19 @@ function changeNativeSelect(select: HTMLSelectElement, value: string) {
   select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function selectedCanonicalLabel(select: HTMLSelectElement) {
+  if (!select.value) return "";
+  const selected = select.options[select.selectedIndex];
+  const original = selected?.textContent?.trim() || select.value;
+  return canonicalClientName(original) || original;
+}
+
 function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const optionsSignatureRef = useRef("");
   const [options, setOptions] = useState<ClientOption[]>(() => readOptions(select));
   const [selectedValue, setSelectedValue] = useState(select.value);
-  const [text, setText] = useState(() => {
-    const selected = select.options[select.selectedIndex];
-    return select.value ? selected?.textContent?.trim() || select.value : "";
-  });
+  const [text, setText] = useState(() => selectedCanonicalLabel(select));
   const listId = `client-filter-${useId().replace(/:/g, "")}`;
 
   useEffect(() => {
@@ -62,11 +78,7 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
       setSelectedValue((current) => current === select.value ? current : select.value);
 
       if (document.activeElement !== inputRef.current) {
-        const selected = select.options[select.selectedIndex];
-        const selectedLabel = select.value
-          ? selected?.textContent?.trim() || select.value
-          : "";
-        setText(selectedLabel);
+        setText(selectedCanonicalLabel(select));
       }
     };
 
@@ -83,7 +95,11 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
     };
   }, [select]);
 
-  const selectedIndex = options.findIndex((option) => option.value === selectedValue);
+  const selectedLabel = selectedCanonicalLabel(select);
+  const selectedKey = clientKey(selectedLabel);
+  const selectedIndex = selectedValue
+    ? options.findIndex((option) => clientKey(option.label) === selectedKey)
+    : -1;
   const positionLabel = selectedIndex >= 0
     ? `${selectedIndex + 1}/${options.length}`
     : `${options.length}`;
@@ -103,17 +119,16 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
     );
 
     if (exactMatch) {
-      if (select.value !== exactMatch.value) changeNativeSelect(select, exactMatch.value);
+      if (clientKey(selectedCanonicalLabel(select)) !== clientKey(exactMatch.label)) {
+        changeNativeSelect(select, exactMatch.value);
+      }
     } else if (select.value) {
       changeNativeSelect(select, "");
     }
   }
 
   function restoreSelectedValue() {
-    window.setTimeout(() => {
-      const selected = select.options[select.selectedIndex];
-      setText(select.value ? selected?.textContent?.trim() || select.value : "");
-    }, 120);
+    window.setTimeout(() => setText(selectedCanonicalLabel(select)), 120);
   }
 
   function navigateClient(direction: -1 | 1) {
@@ -146,7 +161,7 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
         />
         <datalist id={listId}>
           {options.map((option) => (
-            <option key={option.value} value={option.label} />
+            <option key={`${clientKey(option.label)}-${option.value}`} value={option.label} />
           ))}
         </datalist>
         {(text || select.value) && (
