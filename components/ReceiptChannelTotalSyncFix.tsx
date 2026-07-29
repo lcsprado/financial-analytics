@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
-import { filterReceipts } from "@/lib/analytics";
+import { filterInvoices, filterReceipts } from "@/lib/analytics";
 import type { ImportState, PeriodFilter } from "@/lib/types";
 
 const MAIN_STORAGE_KEY = "financial-analytics-data-v1";
 const CHANNEL_STORAGE_KEY = "financial-analytics-receipt-channels-v1";
 const INCLUDE_STORAGE_KEY = "financial-analytics-include-receipt-channels-v1";
+const CHANNEL_EVENT = "financial-analytics-receipt-channels-updated";
+const INCLUDE_EVENT = "financial-analytics-receipt-channels-include-changed";
 
 const currency = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -64,6 +66,13 @@ function setText(element: HTMLElement | null | undefined, value: string) {
   if (element && element.textContent !== value) element.textContent = value;
 }
 
+function findKpiCard(titles: string[]) {
+  return Array.from(document.querySelectorAll<HTMLElement>(".kpi-card")).find((card) => {
+    const title = normalize(card.querySelector(".kpi-title")?.textContent);
+    return titles.some((candidate) => title === candidate || title.includes(candidate));
+  }) ?? null;
+}
+
 export default function ReceiptChannelTotalSyncFix() {
   useEffect(() => {
     const apply = () => {
@@ -81,37 +90,60 @@ export default function ReceiptChannelTotalSyncFix() {
       const channelTotal = (channelData.entries ?? [])
         .filter((entry) => inPeriod(entry.receiptDate, filter))
         .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-      const adjustedReceived = baseReceived + (includeRequested && canInclude ? channelTotal : 0);
+      const includedChannelTotal = includeRequested && canInclude ? channelTotal : 0;
+      const adjustedReceived = baseReceived + includedChannelTotal;
 
-      const cards = Array.from(document.querySelectorAll<HTMLElement>(".kpi-card"));
-      const receivedCard = cards.find((card) =>
-        normalize(card.querySelector(".kpi-title")?.textContent) === "RECEBIDO"
-      );
-      if (!receivedCard) return;
+      const receivedCard = findKpiCard(["RECEBIDO"]);
+      if (receivedCard) {
+        setText(receivedCard.querySelector<HTMLElement>(":scope > strong"), currency.format(adjustedReceived));
+        setText(
+          receivedCard.querySelector<HTMLElement>(".kpi-detail"),
+          includeRequested && canInclude
+            ? `${filteredReceipts.length.toLocaleString("pt-BR")} lançamentos + Cielo/PIX`
+            : `${filteredReceipts.length.toLocaleString("pt-BR")} lançamentos`,
+        );
+        receivedCard.dataset.receiptBaseTotal = String(baseReceived);
+        receivedCard.dataset.receiptChannelTotal = String(includedChannelTotal);
+        receivedCard.dataset.receiptChannelIncluded = String(includeRequested && canInclude);
+      }
 
-      setText(receivedCard.querySelector<HTMLElement>(":scope > strong"), currency.format(adjustedReceived));
-      setText(
-        receivedCard.querySelector<HTMLElement>(".kpi-detail"),
-        includeRequested && canInclude
-          ? `${filteredReceipts.length.toLocaleString("pt-BR")} lançamentos + Cielo/PIX`
-          : `${filteredReceipts.length.toLocaleString("pt-BR")} lançamentos`,
-      );
-      receivedCard.dataset.receiptChannelIncluded = String(includeRequested && canInclude);
+      const emitted = filterInvoices(mainData.invoices ?? [], filter)
+        .reduce((sum, invoice) => sum + invoice.grossValue, 0);
+      const balance = emitted - adjustedReceived;
+      const balanceCard = findKpiCard([
+        "DIFERENCA DO PERIODO",
+        "A RECEBER",
+        "SALDO A RECEBER",
+        "SALDO",
+      ]);
+
+      if (balanceCard) {
+        setText(balanceCard.querySelector<HTMLElement>(":scope > strong"), currency.format(balance));
+        const detail = balanceCard.querySelector<HTMLElement>(".kpi-detail");
+        if (detail) {
+          setText(detail, balance >= 0 ? "Emitido acima do recebido" : "Recebido acima do emitido");
+        }
+      }
     };
 
     const applySoon = () => {
       window.requestAnimationFrame(apply);
-      window.setTimeout(apply, 40);
-      window.setTimeout(apply, 180);
+      window.setTimeout(apply, 30);
+      window.setTimeout(apply, 120);
+      window.setTimeout(apply, 300);
     };
 
     applySoon();
-    const timer = window.setInterval(apply, 250);
+
+    const timer = window.setInterval(apply, 300);
     const observer = new MutationObserver(apply);
     observer.observe(document.body, { childList: true, subtree: true });
+
     document.addEventListener("click", applySoon, true);
     document.addEventListener("change", applySoon, true);
     window.addEventListener("storage", applySoon);
+    window.addEventListener(CHANNEL_EVENT, applySoon);
+    window.addEventListener(INCLUDE_EVENT, applySoon);
 
     return () => {
       window.clearInterval(timer);
@@ -119,6 +151,8 @@ export default function ReceiptChannelTotalSyncFix() {
       document.removeEventListener("click", applySoon, true);
       document.removeEventListener("change", applySoon, true);
       window.removeEventListener("storage", applySoon);
+      window.removeEventListener(CHANNEL_EVENT, applySoon);
+      window.removeEventListener(INCLUDE_EVENT, applySoon);
     };
   }, []);
 
