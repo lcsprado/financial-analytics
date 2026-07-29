@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import ReceiptChannelSummary from "@/components/ReceiptChannelSummary";
+import ReceiptChannelTotalSyncFix from "@/components/ReceiptChannelTotalSyncFix";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         {children}
         <ReceiptChannelSummary />
+        <ReceiptChannelTotalSyncFix />
       </body>
     </html>
   );
