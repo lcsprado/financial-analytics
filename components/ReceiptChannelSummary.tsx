@@ -350,7 +350,7 @@ export default function ReceiptChannelSummary() {
   if (!target) return null;
 
   return createPortal(
-    <section className="receipt-channel-summary">
+    <section className={`receipt-channel-summary ${showDetails ? "is-expanded" : ""}`}>
       <div className="receipt-channel-heading">
         <div>
           <span>COMPOSIÇÃO CIELO</span>
@@ -400,6 +400,7 @@ export default function ReceiptChannelSummary() {
             <div className="receipt-channel-breakdown">
               <div><span><Landmark size={14} /> Banco do Brasil</span><strong>{currency.format(totals.brasil.total)}</strong><small>Cielo {currency.format(totals.brasil.cielo)} · PIX {currency.format(totals.brasil.pix)}</small></div>
               <div><span><Building2 size={14} /> Bradesco</span><strong>{currency.format(totals.bradesco.total)}</strong><small>Cielo {currency.format(totals.bradesco.cielo)} · PIX {currency.format(totals.bradesco.pix)}</small></div>
+              <div className="receipt-channel-consolidated"><span><Sigma size={14} /> Total consolidado</span><strong>{currency.format(totals.total.total)}</strong><small>Cielo {currency.format(totals.total.cielo)} · PIX {currency.format(totals.total.pix)}</small></div>
             </div>
           </>
         ) : (
@@ -426,7 +427,9 @@ export default function ReceiptChannelSummary() {
           border-radius: 14px;
           box-shadow: var(--shadow);
         }
-        .receipt-channel-heading { height: 100%; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .receipt-channel-heading { min-height: 104px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .receipt-channel-summary.is-expanded { height: auto; }
+        .receipt-channel-summary.is-expanded .receipt-channel-heading { min-height: 0; }
         .receipt-channel-heading > div > span { color: #8b94a7; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
         .receipt-channel-heading h3 { margin: 9px 0 0; color: #202738; font-size: clamp(21px, 2vw, 28px); letter-spacing: -1.1px; }
         .receipt-channel-heading p { margin: 7px 0 0; color: #858ea1; font-size: 9px; }
@@ -469,6 +472,7 @@ export default function ReceiptChannelSummary() {
         .receipt-channel-details-toggle:hover { color: #4258db; border-color: #cfd6ff; background: #f5f6ff; }
         .receipt-channel-breakdown { margin-top: 14px; padding-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; border-top: 1px solid #e6eaf2; }
         .receipt-channel-breakdown > div { min-width: 0; padding: 9px 10px; border: 1px solid #e7eaf1; border-radius: 9px; background: rgba(255,255,255,.88); }
+        .receipt-channel-breakdown .receipt-channel-consolidated { grid-column: 1 / -1; border-color: #ccd4ff; background: #f2f4ff; }
         .receipt-channel-breakdown span { display: flex; align-items: center; gap: 5px; color: #707a8f; font-size: 9px; font-weight: 850; }
         .receipt-channel-breakdown strong { display: block; margin-top: 6px; color: #202738; font-size: 14px; }
         .receipt-channel-breakdown small { display: block; margin-top: 4px; color: #8a93a5; font-size: 8px; line-height: 1.35; }
