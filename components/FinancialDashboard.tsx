@@ -483,6 +483,7 @@ export default function FinancialDashboard() {
                   <section className="kpi-grid">
                     <KpiCard title="Receita emitida" value={currency.format(dashboard.emitted)} detail={`${integer.format(dashboard.invoiceCount)} notas no período`} icon={<TrendingUp size={20} />} />
                     <KpiCard title="Recebido" value={currency.format(dashboard.received)} detail={`${integer.format(dashboard.receiptCount)} lançamentos`} icon={<CircleDollarSign size={20} />} tone="success" />
+                    <div id="receipt-channel-kpi-slot" className="receipt-channel-kpi-slot" />
                     <KpiCard
                       title="Diferença do período"
                       value={currency.format(dashboard.difference)}
