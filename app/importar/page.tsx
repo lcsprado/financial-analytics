@@ -3,6 +3,11 @@
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, LayoutDashboard, RefreshCcw, UploadCloud, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { parseInvoiceWorkbook, parseReceiptWorkbook } from "@/lib/parsers";
+import {
+  CHANNEL_EVENT,
+  CHANNEL_STORAGE_KEY,
+  parseChannelWorkbook,
+} from "@/components/ReceiptChannelSummary";
 import type { ImportState } from "@/lib/types";
 
 const STORAGE_KEY = "financial-analytics-data-v1";
@@ -134,13 +139,21 @@ export default function ImportarPage() {
         };
         setNotice(`${invoices.length.toLocaleString("pt-BR")} emissões importadas com sucesso.`);
       } else {
-        const receipts = await parseReceiptWorkbook(file);
+        const [receipts, channels] = await Promise.all([
+          parseReceiptWorkbook(file),
+          parseChannelWorkbook(file),
+        ]);
         next = {
           ...current,
           receipts,
           receiptFileName: file.name,
         };
-        setNotice(`${receipts.length.toLocaleString("pt-BR")} recebimentos importados com sucesso.`);
+        window.localStorage.setItem(CHANNEL_STORAGE_KEY, JSON.stringify(channels));
+        window.dispatchEvent(new Event(CHANNEL_EVENT));
+        setNotice(
+          `${receipts.length.toLocaleString("pt-BR")} recebimentos e `
+          + `${channels.entries.length.toLocaleString("pt-BR")} lançamentos Cielo/PIX importados com sucesso.`,
+        );
       }
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
