@@ -140,6 +140,7 @@ function MultiClientControl({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>(() => splitClientSelection(select.value));
@@ -191,11 +192,18 @@ function MultiClientControl({
   }, [options, query]);
 
   function applySelection(next: string[]) {
+    const pageScroll = { x: window.scrollX, y: window.scrollY };
+    const listScrollTop = listRef.current?.scrollTop ?? 0;
     const unique = [...new Map(next.map((value) => [keyForScope(value, scope), value])).values()]
       .filter(Boolean);
     const nativeValue = ensureSelectionValue(select, unique, options, scope);
     setSelected(unique);
     setNativeSelect(select, nativeValue);
+
+    requestAnimationFrame(() => {
+      window.scrollTo(pageScroll.x, pageScroll.y);
+      if (listRef.current) listRef.current.scrollTop = listScrollTop;
+    });
   }
 
   function toggle(option: ClientOption) {
@@ -264,11 +272,15 @@ function MultiClientControl({
               <button type="button" onClick={() => applySelection([])} disabled={!selected.length}>Limpar seleção</button>
             </div>
 
-            <div className="multi-client-list" role="listbox" aria-multiselectable="true">
+            <div ref={listRef} className="multi-client-list" role="listbox" aria-multiselectable="true">
               {visibleOptions.map((option) => {
                 const checked = selectedKeys.has(keyForScope(option.value, scope));
                 return (
-                  <label key={keyForScope(option.value, scope)} className={checked ? "is-selected" : ""}>
+                  <label
+                    key={keyForScope(option.value, scope)}
+                    className={checked ? "is-selected" : ""}
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
                     <input type="checkbox" checked={checked} onChange={() => toggle(option)} />
                     <span className="multi-client-checkbox"><Check size={12} /></span>
                     <span title={option.label}>{option.label}</span>
@@ -427,7 +439,10 @@ export default function ScopedClientFilterEnhancer() {
           font-size: 11px; font-weight: 650;
         }
         .multi-client-list label:hover, .multi-client-list label.is-selected { background: #f1f3ff; }
-        .multi-client-list label > input { position: absolute; opacity: 0; pointer-events: none; }
+        .multi-client-list label > input {
+          position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0;
+          pointer-events: none; overflow: hidden; clip-path: inset(50%);
+        }
         .multi-client-list label > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .multi-client-checkbox {
           width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid #cfd5e1;
