@@ -40,6 +40,24 @@ import { calculateDashboard, getAvailableYears } from "@/lib/analytics";
 import { compactCurrency, currency, formatDate, integer, percent } from "@/lib/format";
 import { createDemoData } from "@/lib/demo";
 import { parseInvoiceWorkbook, parseReceiptWorkbook } from "@/lib/parsers";
+import {
+  CHANNEL_DATA_EVENT,
+  clearOfflineData,
+  hasStorageConsent,
+  INCLUDE_CHANNEL_STORAGE_KEY,
+  loadAnalysisState,
+  loadChannelPayload,
+  notifyAnalysisData,
+  OFFLINE_DATA_CLEARED_EVENT,
+  readStoredFilter,
+  saveAnalysisState,
+  saveChannelPayload,
+  saveImportedFile,
+  saveStoredFilter,
+  setStorageConsent,
+  STORAGE_CONSENT_EVENT,
+} from "@/lib/offlineStorage";
+import { parseChannelWorkbook, type ChannelPayload } from "@/components/ReceiptChannelSummary";
 import type { ImportState, PeriodFilter } from "@/lib/types";
 
 type View = "overview" | "invoices" | "receipts" | "clients" | "import";
@@ -60,10 +78,6 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const PIE_COLORS = ["#5d72f6", "#22c7a9", "#f8b84e", "#ef718a", "#9b7cf7", "#58b9ee"];
-const STORAGE_KEY = "financial-analytics-data-v1";
-const CHANNEL_STORAGE_KEY = "financial-analytics-receipt-channels-v1";
-const INCLUDE_CHANNEL_STORAGE_KEY = "financial-analytics-include-receipt-channels-v1";
-const CHANNEL_EVENT = "financial-analytics-receipt-channels-updated";
 const INCLUDE_CHANNEL_EVENT = "financial-analytics-receipt-channels-include-changed";
 
 type ReceiptChannelEntry = {
@@ -72,31 +86,11 @@ type ReceiptChannelEntry = {
   bank: string;
 };
 
-function readReceiptChannels(): ReceiptChannelEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(CHANNEL_STORAGE_KEY);
-    return raw ? (JSON.parse(raw).entries ?? []) as ReceiptChannelEntry[] : [];
-  } catch {
-    return [];
-  }
-}
-
 function channelEntryMatchesPeriod(entry: ReceiptChannelEntry, filter: PeriodFilter) {
   const date = new Date(`${entry.receiptDate}T12:00:00`);
   return !Number.isNaN(date.getTime())
     && (filter.year === "all" || date.getFullYear() === filter.year)
     && (filter.month === "all" || date.getMonth() === filter.month);
-}
-
-function readStoredData(): ImportState | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) as ImportState : null;
-  } catch {
-    return null;
-  }
 }
 
 function KpiCard({
@@ -258,35 +252,88 @@ export default function FinancialDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [receiptChannels, setReceiptChannels] = useState<ReceiptChannelEntry[]>([]);
   const [includeReceiptChannels, setIncludeReceiptChannels] = useState(false);
+  const [storageConsent, setStorageConsentState] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const stored = readStoredData();
-    if (stored) setData(stored);
+    let active = true;
+    setFilter(readStoredFilter());
+    setStorageConsentState(hasStorageConsent());
+    void loadAnalysisState()
+      .then((stored) => {
+        if (!active || !stored) return;
+        setData(stored);
+        notifyAnalysisData(stored);
+        setNotice("A última análise salva neste dispositivo foi recuperada.");
+      })
+      .catch(() => {
+        if (active) setError("Não foi possível recuperar a análise salva neste dispositivo.");
+      })
+      .finally(() => {
+        if (active) setHydrated(true);
+      });
+    if (!hasStorageConsent()) setHydrated(true);
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    const syncReceiptChannels = () => {
-      setReceiptChannels(readReceiptChannels());
+    const syncReceiptChannels = async () => {
+      const payload = await loadChannelPayload<ChannelPayload>();
+      setReceiptChannels(payload?.entries ?? []);
       setIncludeReceiptChannels(window.localStorage.getItem(INCLUDE_CHANNEL_STORAGE_KEY) === "true");
     };
-    syncReceiptChannels();
+    void syncReceiptChannels();
     window.addEventListener("storage", syncReceiptChannels);
-    window.addEventListener(CHANNEL_EVENT, syncReceiptChannels);
+    window.addEventListener(CHANNEL_DATA_EVENT, syncReceiptChannels);
     window.addEventListener(INCLUDE_CHANNEL_EVENT, syncReceiptChannels);
     return () => {
       window.removeEventListener("storage", syncReceiptChannels);
-      window.removeEventListener(CHANNEL_EVENT, syncReceiptChannels);
+      window.removeEventListener(CHANNEL_DATA_EVENT, syncReceiptChannels);
       window.removeEventListener(INCLUDE_CHANNEL_EVENT, syncReceiptChannels);
     };
   }, []);
 
   useEffect(() => {
-    if (!data.invoices.length && !data.receipts.length) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {
-      // The dashboard remains usable even when browser storage is full or disabled.
-    }
+    if (!hydrated) return;
+    notifyAnalysisData(data);
+    if (!hasStorageConsent() || (!data.invoices.length && !data.receipts.length)) return;
+    const timer = window.setTimeout(() => {
+      void saveAnalysisState(data).catch(() => {
+        setError("O navegador não conseguiu salvar esta análise para recuperação offline.");
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [data, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveStoredFilter(filter);
+  }, [filter, hydrated]);
+
+  useEffect(() => {
+    const handleConsent = () => {
+      const next = hasStorageConsent();
+      setStorageConsentState(next);
+      if (next && (data.invoices.length || data.receipts.length)) {
+        void saveAnalysisState(data);
+      }
+    };
+    const handleCleared = () => {
+      setData({ invoices: [], receipts: [] });
+      setReceiptChannels([]);
+      setSearch("");
+      setView("overview");
+      setFilter({ year: 2026, month: "all", client: "" });
+      setNotice("Os dados salvos neste dispositivo foram apagados.");
+    };
+    window.addEventListener(STORAGE_CONSENT_EVENT, handleConsent);
+    window.addEventListener(OFFLINE_DATA_CLEARED_EVENT, handleCleared);
+    return () => {
+      window.removeEventListener(STORAGE_CONSENT_EVENT, handleConsent);
+      window.removeEventListener(OFFLINE_DATA_CLEARED_EVENT, handleCleared);
+    };
   }, [data]);
 
   const years = useMemo(() => getAvailableYears(data.invoices, data.receipts), [data]);
@@ -333,11 +380,24 @@ export default function FinancialDashboard() {
       if (kind === "invoices") {
         const invoices = await parseInvoiceWorkbook(file);
         setData((current) => ({ ...current, invoices, invoiceFileName: file.name }));
+        await saveImportedFile("invoices", file);
         setNotice(`${integer.format(invoices.length)} emissões importadas com sucesso.`);
       } else {
-        const receipts = await parseReceiptWorkbook(file);
+        const [receipts, channels] = await Promise.all([
+          parseReceiptWorkbook(file),
+          parseChannelWorkbook(file),
+        ]);
         setData((current) => ({ ...current, receipts, receiptFileName: file.name }));
-        setNotice(`${integer.format(receipts.length)} recebimentos importados com sucesso.`);
+        setReceiptChannels(channels.entries);
+        await Promise.all([
+          saveImportedFile("receipts", file),
+          saveChannelPayload(channels),
+        ]);
+        window.dispatchEvent(new Event(CHANNEL_DATA_EVENT));
+        setNotice(
+          `${integer.format(receipts.length)} recebimentos e `
+          + `${integer.format(channels.entries.length)} lançamentos Cielo/PIX importados com sucesso.`,
+        );
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível processar o arquivo.");
@@ -353,12 +413,13 @@ export default function FinancialDashboard() {
     setNotice("Demonstração carregada. Importe suas planilhas para substituir os dados.");
   }
 
-  function clearData() {
+  async function clearData() {
+    await clearOfflineData();
     setData({ invoices: [], receipts: [] });
+    setReceiptChannels([]);
     setSearch("");
     setView("overview");
     setFilter({ year: 2026, month: "all", client: "" });
-    window.localStorage.removeItem(STORAGE_KEY);
   }
 
   const invoiceRows = dashboard.filteredInvoices
@@ -432,7 +493,7 @@ export default function FinancialDashboard() {
         </header>
 
         <div className="content-area">
-          {!hasData ? (
+          {!hasData && view !== "import" ? (
             <EmptyState onImport={() => setView("import")} onDemo={loadDemo} />
           ) : (
             <>
@@ -662,6 +723,20 @@ export default function FinancialDashboard() {
                     <UploadCard kind="invoices" title="1. FINR020 — Emissões" description="Colunas esperadas: Data da Emissão, NF Eletr, Valor, Líquido e Nome Cliente." fileName={data.invoiceFileName} loading={loading === "invoices"} onFile={handleFile} />
                     <UploadCard kind="receipts" title="2. Conciliação — Recebimentos" description="Abas mensais com blocos por banco e a linha de início RECEBIMENTOS." fileName={data.receiptFileName} loading={loading === "receipts"} onFile={handleFile} />
                   </div>
+                  <label className="offline-storage-choice">
+                    <input
+                      type="checkbox"
+                      checked={storageConsent}
+                      onChange={(event) => {
+                        setStorageConsent(event.target.checked);
+                        setStorageConsentState(event.target.checked);
+                      }}
+                    />
+                    <span>
+                      <strong>Guardar planilhas e análise neste dispositivo</strong>
+                      <small>Permite recuperar o painel offline por até 30 dias. Você pode apagar quando quiser.</small>
+                    </span>
+                  </label>
                   <div className="import-results">
                     <div><span className="result-icon violet"><ReceiptText /></span><strong>{integer.format(data.invoices.length)}</strong><span>emissões carregadas</span></div>
                     <div><span className="result-icon green"><WalletCards /></span><strong>{integer.format(data.receipts.length)}</strong><span>recebimentos carregados</span></div>

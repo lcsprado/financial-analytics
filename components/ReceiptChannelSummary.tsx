@@ -5,11 +5,13 @@ import { Building2, ChevronDown, ChevronUp, CreditCard, Landmark, Sigma } from "
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { currency, monthLabels } from "@/lib/format";
+import {
+  CHANNEL_DATA_EVENT,
+  INCLUDE_CHANNEL_STORAGE_KEY,
+  loadChannelPayload,
+} from "@/lib/offlineStorage";
 import type { PeriodFilter } from "@/lib/types";
 
-export const CHANNEL_STORAGE_KEY = "financial-analytics-receipt-channels-v1";
-const INCLUDE_STORAGE_KEY = "financial-analytics-include-receipt-channels-v1";
-export const CHANNEL_EVENT = "financial-analytics-receipt-channels-updated";
 const INCLUDE_EVENT = "financial-analytics-receipt-channels-include-changed";
 
 const MONTH_NAMES = [
@@ -183,15 +185,6 @@ export async function parseChannelWorkbook(file: File): Promise<ChannelPayload> 
   return { fileName: file.name, entries };
 }
 
-function readPayload(raw: string | null): ChannelPayload {
-  try {
-    const parsed = raw ? JSON.parse(raw) as ChannelPayload : emptyPayload;
-    return Array.isArray(parsed.entries) ? parsed : emptyPayload;
-  } catch {
-    return emptyPayload;
-  }
-}
-
 function readFilters(): FilterSnapshot {
   const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".filter-bar select"));
   const yearValue = selects[0]?.value ?? "all";
@@ -263,13 +256,21 @@ export default function ReceiptChannelSummary() {
   const signatureRef = useRef("");
 
   useEffect(() => {
+    const loadPayload = async () => {
+      const stored = await loadChannelPayload<ChannelPayload>();
+      setPayload(stored && Array.isArray(stored.entries) ? stored : emptyPayload);
+    };
+    void loadPayload();
+    window.addEventListener(CHANNEL_DATA_EVENT, loadPayload);
+    return () => window.removeEventListener(CHANNEL_DATA_EVENT, loadPayload);
+  }, []);
+
+  useEffect(() => {
     const sync = () => {
-      const channelRaw = window.localStorage.getItem(CHANNEL_STORAGE_KEY);
       const nextFilter = readFilters();
       const nextTarget = normalize(nextFilter.view) === "VISAO GERAL" ? findKpiSlot() : null;
-      const nextIncluded = window.localStorage.getItem(INCLUDE_STORAGE_KEY) === "true";
+      const nextIncluded = window.localStorage.getItem(INCLUDE_CHANNEL_STORAGE_KEY) === "true";
       const signature = [
-        channelRaw ?? "",
         nextFilter.year,
         nextFilter.month,
         nextFilter.client,
@@ -281,7 +282,6 @@ export default function ReceiptChannelSummary() {
       setTarget((current) => current === nextTarget ? current : nextTarget);
       if (signature === signatureRef.current) return;
       signatureRef.current = signature;
-      setPayload(readPayload(channelRaw));
       setFilter(nextFilter);
       setIncludeInTotal(nextIncluded);
     };
@@ -295,14 +295,12 @@ export default function ReceiptChannelSummary() {
     observer.observe(document.body, { childList: true, subtree: true });
     const timer = window.setInterval(run, 500);
     window.addEventListener("storage", run);
-    window.addEventListener(CHANNEL_EVENT, run);
     window.addEventListener(INCLUDE_EVENT, run);
 
     return () => {
       observer.disconnect();
       window.clearInterval(timer);
       window.removeEventListener("storage", run);
-      window.removeEventListener(CHANNEL_EVENT, run);
       window.removeEventListener(INCLUDE_EVENT, run);
     };
   }, []);
@@ -342,7 +340,7 @@ export default function ReceiptChannelSummary() {
   function toggleInclude() {
     if (!payload.entries.length) return;
     const next = !includeInTotal;
-    window.localStorage.setItem(INCLUDE_STORAGE_KEY, String(next));
+    window.localStorage.setItem(INCLUDE_CHANNEL_STORAGE_KEY, String(next));
     setIncludeInTotal(next);
     window.dispatchEvent(new CustomEvent(INCLUDE_EVENT, { detail: { included: next } }));
   }

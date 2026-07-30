@@ -6,13 +6,12 @@ import type { ImportState, Receipt } from "@/lib/types";
 import { currency, percent } from "@/lib/format";
 import { clientKey, sameClientName } from "@/lib/clientNames";
 import { splitClientSelection } from "@/lib/clientSelection";
+import { ANALYSIS_DATA_EVENT, loadAnalysisState } from "@/lib/offlineStorage";
 import {
   canonicalReceiptClientName,
   receiptClientKey,
   sameReceiptClientName,
 } from "@/lib/receiptClientNames";
-
-const STORAGE_KEY = "financial-analytics-data-v1";
 
 type FilterSnapshot = {
   year: number | "all";
@@ -29,14 +28,6 @@ function displayClient(receipt: Receipt) {
   return canonicalReceiptClientName(
     receipt.clientHint || receipt.description || "Cliente não identificado",
   ) || "Cliente não identificado";
-}
-
-function parseData(raw: string | null): ImportState {
-  try {
-    return raw ? JSON.parse(raw) as ImportState : { invoices: [], receipts: [] };
-  } catch {
-    return { invoices: [], receipts: [] };
-  }
 }
 
 function readFilters(): FilterSnapshot {
@@ -107,23 +98,30 @@ export default function ReceiptClientsFallback() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [data, setData] = useState<ImportState>({ invoices: [], receipts: [] });
   const [filters, setFilters] = useState<FilterSnapshot>({ year: "all", month: "all", client: "" });
-  const dataSignature = useRef("");
   const filterSignature = useRef("");
 
   useEffect(() => {
+    let active = true;
+    void loadAnalysisState().then((stored) => {
+      if (active && stored) setData(stored);
+    });
+    const handleData = (event: Event) => {
+      setData((event as CustomEvent<ImportState>).detail);
+    };
+    window.addEventListener(ANALYSIS_DATA_EVENT, handleData);
+    return () => {
+      active = false;
+      window.removeEventListener(ANALYSIS_DATA_EVENT, handleData);
+    };
+  }, []);
+
+  useEffect(() => {
     const sync = () => {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      const nextData = parseData(raw);
       const nextFilters = readFilters();
       const nextFilterSignature = `${nextFilters.year}|${nextFilters.month}|${nextFilters.client}`;
       const nextTarget = document.querySelector<HTMLElement>(".clients-page");
 
-      addReceiptClientOptions(nextData);
-
-      if ((raw ?? "") !== dataSignature.current) {
-        dataSignature.current = raw ?? "";
-        setData(nextData);
-      }
+      addReceiptClientOptions(data);
       if (nextFilterSignature !== filterSignature.current) {
         filterSignature.current = nextFilterSignature;
         setFilters(nextFilters);
@@ -133,18 +131,16 @@ export default function ReceiptClientsFallback() {
 
     sync();
     document.addEventListener("change", sync, true);
-    window.addEventListener("storage", sync);
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true });
     const timer = window.setInterval(sync, 700);
 
     return () => {
       document.removeEventListener("change", sync, true);
-      window.removeEventListener("storage", sync);
       observer.disconnect();
       window.clearInterval(timer);
     };
-  }, []);
+  }, [data]);
 
   const filteredInvoiceCount = useMemo(() => data.invoices.filter((invoice) =>
     inPeriod(invoice.emissionDate, filters)
