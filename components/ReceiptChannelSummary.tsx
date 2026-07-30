@@ -7,9 +7,9 @@ import { createPortal } from "react-dom";
 import { currency, monthLabels } from "@/lib/format";
 import type { PeriodFilter } from "@/lib/types";
 
-const CHANNEL_STORAGE_KEY = "financial-analytics-receipt-channels-v1";
+export const CHANNEL_STORAGE_KEY = "financial-analytics-receipt-channels-v1";
 const INCLUDE_STORAGE_KEY = "financial-analytics-include-receipt-channels-v1";
-const CHANNEL_EVENT = "financial-analytics-receipt-channels-updated";
+export const CHANNEL_EVENT = "financial-analytics-receipt-channels-updated";
 const INCLUDE_EVENT = "financial-analytics-receipt-channels-include-changed";
 
 const MONTH_NAMES = [
@@ -30,7 +30,7 @@ type ChannelEntry = {
   kind: ChannelKind;
 };
 
-type ChannelPayload = {
+export type ChannelPayload = {
   fileName: string;
   entries: ChannelEntry[];
 };
@@ -97,18 +97,22 @@ function excelDateToISO(value: unknown): string | null {
 
 function isMonthSheet(name: string) {
   const normalized = normalize(name);
-  return MONTH_NAMES.some((month) => normalized.includes(normalize(month))) && /20\d{2}/.test(normalized);
+  return MONTH_NAMES.some((month) => normalized.includes(normalize(month)));
 }
 
 function supportedBank(value: unknown): SupportedBank | null {
   const normalized = normalize(value);
-  if (normalized.includes("BANCO DO BRASIL")) return "BANCO DO BRASIL";
+  if (
+    normalized.includes("BANCO DO BRASIL")
+    || normalized.includes("BANCO BRASIL")
+    || /\bB\.?\s*BRASIL\b/.test(normalized)
+  ) return "BANCO DO BRASIL";
   if (normalized.includes("BRADESCO")) return "BRADESCO";
   return null;
 }
 
 function detectBankBlocks(rows: unknown[][]): { headerRowIndex: number; blocks: BankBlock[] } {
-  for (let rowIndex = 0; rowIndex < Math.min(rows.length, 12); rowIndex += 1) {
+  for (let rowIndex = 0; rowIndex < Math.min(rows.length, 30); rowIndex += 1) {
     const row = rows[rowIndex] ?? [];
     const blocks = row
       .map((cell, columnIndex) => ({ columnIndex, bank: supportedBank(cell) }))
@@ -135,7 +139,7 @@ function channelKind(description: string): ChannelKind | null {
   return null;
 }
 
-async function parseChannelWorkbook(file: File): Promise<ChannelPayload> {
+export async function parseChannelWorkbook(file: File): Promise<ChannelPayload> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
   const entries: ChannelEntry[] = [];
@@ -150,29 +154,13 @@ async function parseChannelWorkbook(file: File): Promise<ChannelPayload> {
     const { headerRowIndex, blocks } = detectBankBlocks(rows);
     if (!blocks.length) continue;
 
-    const explicitReceiptHeader = rows.findIndex((row) =>
-      blocks.some((block) => normalize(row?.[block.descriptionIndex]) === "RECEBIMENTOS"),
-    );
-    const startRow = explicitReceiptHeader >= 0
-      ? explicitReceiptHeader + 1
-      : Math.max(headerRowIndex + 3, 15);
-
-    let footerRow = rows.length;
-    for (let rowIndex = startRow; rowIndex < rows.length; rowIndex += 1) {
-      const isFooter = blocks.some((block) => {
-        const description = normalize(rows[rowIndex]?.[block.descriptionIndex]);
-        return description.includes("PAGAMENTO ONLINE") || description.includes("PAGTOS. ON LINE");
-      });
-      if (isFooter) {
-        footerRow = rowIndex;
-        break;
-      }
-    }
-
-    for (let rowIndex = startRow; rowIndex < footerRow; rowIndex += 1) {
+    const lastDates = new Map<number, string>();
+    for (let rowIndex = headerRowIndex + 1; rowIndex < rows.length; rowIndex += 1) {
       const row = rows[rowIndex];
       for (const block of blocks) {
-        const receiptDate = excelDateToISO(row?.[block.dateIndex]);
+        const explicitDate = excelDateToISO(row?.[block.dateIndex]);
+        if (explicitDate) lastDates.set(block.descriptionIndex, explicitDate);
+        const receiptDate = explicitDate ?? lastDates.get(block.descriptionIndex) ?? null;
         const description = text(row?.[block.descriptionIndex]);
         const amount = numeric(row?.[block.amountIndex]);
         const kind = channelKind(description);
@@ -299,30 +287,7 @@ export default function ReceiptChannelSummary() {
       setIncludeInTotal(nextIncluded);
     };
 
-    const attachReceiptInputs = () => {
-      document.querySelectorAll<HTMLInputElement>('input[type="file"][accept*=".xlsx"]')
-        .forEach((input) => {
-          const card = input.closest<HTMLElement>(".upload-card");
-          if (!card || !/CONCILIA|RECEBIMENT/.test(normalize(card.textContent)) || input.dataset.channelReader === "true") return;
-
-          input.dataset.channelReader = "true";
-          input.addEventListener("change", async () => {
-            const file = input.files?.[0];
-            if (!file) return;
-
-            try {
-              const nextPayload = await parseChannelWorkbook(file);
-              window.localStorage.setItem(CHANNEL_STORAGE_KEY, JSON.stringify(nextPayload));
-              window.dispatchEvent(new Event(CHANNEL_EVENT));
-            } catch {
-              // A importação principal continua funcionando mesmo se o resumo auxiliar falhar.
-            }
-          });
-        });
-    };
-
     const run = () => {
-      attachReceiptInputs();
       sync();
     };
 
