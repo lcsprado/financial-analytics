@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { filterInvoices, filterReceipts } from "@/lib/analytics";
 import { splitClientSelection } from "@/lib/clientSelection";
-import { monthLabels } from "@/lib/format";
 import type { ImportState, PeriodFilter } from "@/lib/types";
 
 const MAIN_STORAGE_KEY = "financial-analytics-data-v1";
@@ -89,16 +88,6 @@ function findKpiCard(titles: string[]) {
   }) ?? null;
 }
 
-function periodLabel(filter: PeriodFilter) {
-  const year = filter.year === "all" ? "todos os anos" : String(filter.year);
-  if (filter.month === "all") return `todos os meses de ${year}`;
-  return `${monthLabels[filter.month]} de ${year}`;
-}
-
-function isCielo(entry: ChannelEntry) {
-  return normalize(entry.kind) === "CIELO" || normalize(entry.description).includes("CIELO");
-}
-
 export default function ReceiptChannelTotalSyncFix() {
   useEffect(() => {
     let eventIncluded: boolean | null = null;
@@ -117,9 +106,6 @@ export default function ReceiptChannelTotalSyncFix() {
       const filteredReceipts = filterReceipts(mainData.receipts ?? [], filter);
       const baseReceived = filteredReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
       const periodEntries = (channelData.entries ?? []).filter((entry) => inPeriod(entry.receiptDate, filter));
-      const cieloTotal = periodEntries
-        .filter(isCielo)
-        .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
       const channelTotal = periodEntries
         .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
       const includedChannelTotal = includeRequested && canInclude ? channelTotal : 0;
@@ -159,8 +145,6 @@ export default function ReceiptChannelTotalSyncFix() {
 
       const toggle = document.querySelector<HTMLButtonElement>(".receipt-channel-toggle");
       if (toggle) {
-        toggle.dataset.cieloPeriodTotal = currency.format(cieloTotal);
-        toggle.dataset.cieloPeriodLabel = periodLabel(filter);
         toggle.dataset.receivedAdjustedTotal = currency.format(adjustedReceived);
         toggle.dataset.includeEffective = String(includeRequested && canInclude);
         toggle.setAttribute("aria-checked", String(includeRequested));
@@ -204,53 +188,5 @@ export default function ReceiptChannelTotalSyncFix() {
     };
   }, []);
 
-  return (
-    <style jsx global>{`
-      .receipt-channel-heading {
-        padding-bottom: 30px;
-      }
-
-      .receipt-channel-toggle {
-        position: relative;
-      }
-
-      .receipt-channel-toggle::after {
-        content: "Cielo — " attr(data-cielo-period-label) ": " attr(data-cielo-period-total);
-        position: absolute;
-        top: calc(100% + 7px);
-        right: 0;
-        width: max-content;
-        max-width: 230px;
-        color: #68738a;
-        font-size: 9px;
-        font-weight: 750;
-        line-height: 1.25;
-        text-align: right;
-        white-space: normal;
-        pointer-events: none;
-      }
-
-      .receipt-channel-toggle[data-include-effective="true"]::after {
-        color: #4258db;
-      }
-
-      @media (max-width: 900px) {
-        .receipt-channel-heading {
-          padding-bottom: 34px;
-        }
-
-        .receipt-channel-toggle::after {
-          right: auto;
-          left: 0;
-          text-align: left;
-        }
-      }
-
-      @media print {
-        .receipt-channel-heading {
-          padding-bottom: 0;
-        }
-      }
-    `}</style>
-  );
+  return null;
 }

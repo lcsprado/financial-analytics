@@ -1,7 +1,7 @@
 "use client";
 
 import * as XLSX from "xlsx";
-import { Building2, CreditCard, Landmark, Sigma } from "lucide-react";
+import { Building2, ChevronDown, ChevronUp, CreditCard, Landmark, Sigma } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { currency, monthLabels } from "@/lib/format";
@@ -208,12 +208,13 @@ function readFilters(): FilterSnapshot {
   const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".filter-bar select"));
   const yearValue = selects[0]?.value ?? "all";
   const monthValue = selects[1]?.value ?? "all";
+  const clientValue = document.querySelector<HTMLSelectElement>(".client-filter select")?.value ?? "";
   const view = document.querySelector<HTMLElement>(".topbar-title h1")?.textContent?.trim() ?? "";
 
   return {
     year: yearValue === "all" ? "all" : Number(yearValue),
     month: monthValue === "all" ? "all" : Number(monthValue),
-    client: selects[2]?.value ?? "",
+    client: clientValue,
     view,
   };
 }
@@ -271,6 +272,7 @@ export default function ReceiptChannelSummary() {
   const [filter, setFilter] = useState<FilterSnapshot>({ year: "all", month: "all", client: "", view: "" });
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [includeInTotal, setIncludeInTotal] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const signatureRef = useRef("");
 
   useEffect(() => {
@@ -374,6 +376,7 @@ export default function ReceiptChannelSummary() {
   }, [periodEntries]);
 
   function toggleInclude() {
+    if (!payload.entries.length) return;
     const next = !includeInTotal;
     window.localStorage.setItem(INCLUDE_STORAGE_KEY, String(next));
     setIncludeInTotal(next);
@@ -389,32 +392,69 @@ export default function ReceiptChannelSummary() {
           <span>OUTROS RECEBIMENTOS</span>
           <h3>Cielo e PIX recebido — cliente</h3>
           <p>{periodLabel(periodFilter)} · Banco do Brasil e Bradesco</p>
-          <strong className="receipt-channel-period-total">Cielo no período: {currency.format(totals.total.cielo)}</strong>
         </div>
-        <button
-          type="button"
-          className={`receipt-channel-toggle ${includeInTotal ? "is-active" : ""}`}
-          role="switch"
-          aria-checked={includeInTotal}
-          onClick={toggleInclude}
-          title={periodFilter.client ? "Limpe o filtro de cliente para incluir valores não atribuídos" : "Incluir ou retirar estes valores do total recebido"}
-        >
-          <i><span /></i>
-          <b>{includeInTotal ? "Incluído no total recebido" : "Fora do total recebido"}</b>
-        </button>
+        <div className="receipt-channel-actions">
+          <button
+            type="button"
+            className={`receipt-channel-toggle ${includeInTotal ? "is-active" : ""}`}
+            role="switch"
+            aria-checked={includeInTotal}
+            disabled={!payload.entries.length}
+            onClick={toggleInclude}
+            title={
+              !payload.entries.length
+                ? "Reimporte a planilha de Recebimentos para carregar estes valores"
+                : periodFilter.client
+                  ? "Limpe o filtro de cliente para incluir valores não atribuídos"
+                  : "Incluir ou retirar estes valores do total recebido"
+            }
+          >
+            <i><span /></i>
+            <b>
+              {!payload.entries.length
+                ? "Reimporte para ativar"
+                : includeInTotal
+                  ? "Incluído no total recebido"
+                  : "Fora do total recebido"}
+            </b>
+          </button>
+          <button
+            type="button"
+            className="receipt-channel-details-toggle"
+            aria-expanded={showDetails}
+            onClick={() => setShowDetails((current) => !current)}
+          >
+            {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {showDetails ? "Ocultar composição" : "Ver composição"}
+          </button>
+        </div>
       </div>
 
-      {payload.entries.length ? (
-        <div className="receipt-channel-grid">
-          <ChannelCard title="Banco do Brasil" total={totals.brasil.total} cielo={totals.brasil.cielo} pix={totals.brasil.pix} icon={<Landmark size={16} />} />
-          <ChannelCard title="Bradesco" total={totals.bradesco.total} cielo={totals.bradesco.cielo} pix={totals.bradesco.pix} icon={<Building2 size={16} />} />
-          <ChannelCard title="Total dos dois bancos" total={totals.total.total} cielo={totals.total.cielo} pix={totals.total.pix} icon={<Sigma size={16} />} featured />
-        </div>
-      ) : (
-        <div className="receipt-channel-empty">
-          <CreditCard size={18} />
-          <span>Reimporte a planilha de Recebimentos uma vez para carregar Cielo e PIX neste resumo.</span>
-        </div>
+      {showDetails && (
+        payload.entries.length ? (
+          <>
+            <div className="receipt-channel-period-summary">
+              <CreditCard size={17} />
+              <span>
+                Cielo no período: <strong>{currency.format(totals.total.cielo)}</strong>
+                <em>•</em>
+                Cielo + PIX recebido: <strong>{currency.format(totals.total.total)}</strong>
+              </span>
+            </div>
+            <div className="receipt-channel-grid">
+              <ChannelCard title="Banco do Brasil" total={totals.brasil.total} cielo={totals.brasil.cielo} pix={totals.brasil.pix} icon={<Landmark size={16} />} />
+              <ChannelCard title="Bradesco" total={totals.bradesco.total} cielo={totals.bradesco.cielo} pix={totals.bradesco.pix} icon={<Building2 size={16} />} />
+              <ChannelCard title="Total dos dois bancos" total={totals.total.total} cielo={totals.total.cielo} pix={totals.total.pix} icon={<Sigma size={16} />} featured />
+            </div>
+          </>
+        ) : (
+          <div className="receipt-channel-empty">
+            <CreditCard size={18} />
+            <span>
+              Cielo no período: <strong>{currency.format(0)}</strong>. Reimporte a planilha de Recebimentos uma vez para carregar Cielo e PIX.
+            </span>
+          </div>
+        )
       )}
 
       {periodFilter.client && includeInTotal && (
@@ -429,11 +469,11 @@ export default function ReceiptChannelSummary() {
           background: linear-gradient(180deg, rgba(247,249,253,.2), #f8faff);
           border-radius: 0 0 12px 12px;
         }
-        .receipt-channel-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+        .receipt-channel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
         .receipt-channel-heading > div > span { color: #8b94a7; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
         .receipt-channel-heading h3 { margin: 3px 0 0; color: #202738; font-size: 13px; }
         .receipt-channel-heading p { margin: 3px 0 0; color: #858ea1; font-size: 9px; }
-        .receipt-channel-period-total { display: block; margin-top: 7px; color: #00a1d8; font-size: 10px; font-weight: 900; }
+        .receipt-channel-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
         .receipt-channel-toggle {
           min-width: 174px;
           display: flex;
@@ -454,6 +494,38 @@ export default function ReceiptChannelSummary() {
         .receipt-channel-toggle.is-active { color: #4258db; border-color: #cfd6ff; background: #f5f6ff; }
         .receipt-channel-toggle.is-active i { background: #5d72f6; }
         .receipt-channel-toggle.is-active i span { transform: translateX(12px); }
+        .receipt-channel-toggle:disabled { opacity: .58; cursor: not-allowed; }
+        .receipt-channel-details-toggle {
+          min-height: 31px;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 6px 9px;
+          border: 1px solid #e3e7ef;
+          border-radius: 9px;
+          color: #657087;
+          background: #fff;
+          font-size: 9px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .receipt-channel-details-toggle:hover { color: #4258db; border-color: #cfd6ff; background: #f5f6ff; }
+        .receipt-channel-period-summary {
+          margin-top: 12px;
+          min-height: 42px;
+          padding: 10px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border: 1px solid #e4e8f0;
+          border-radius: 9px;
+          color: #68738a;
+          background: #fff;
+          font-size: 9px;
+        }
+        .receipt-channel-period-summary svg { flex: 0 0 auto; color: #00a1d8; }
+        .receipt-channel-period-summary strong { color: #202738; }
+        .receipt-channel-period-summary em { margin: 0 6px; color: #b3bac8; font-style: normal; }
         .receipt-channel-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
         .receipt-channel-card { min-width: 0; padding: 11px; border: 1px solid #e7eaf1; border-radius: 9px; background: #fff; }
         .receipt-channel-card.is-featured { border-color: #ccd4ff; background: #f2f4ff; }
@@ -465,13 +537,15 @@ export default function ReceiptChannelSummary() {
         .receipt-channel-card > small b { color: #657087; }
         .receipt-channel-card > small em { margin: 0 3px; font-style: normal; }
         .receipt-channel-empty { margin-top: 12px; min-height: 48px; padding: 10px; display: flex; align-items: center; gap: 8px; border: 1px dashed #dce1ea; border-radius: 9px; color: #7d879a; font-size: 9px; }
+        .receipt-channel-empty strong { color: #202738; }
         .receipt-channel-note { margin: 9px 0 0; color: #9b6b18; font-size: 8px; }
         @media (max-width: 900px) {
           .receipt-channel-heading { align-items: flex-start; flex-direction: column; }
+          .receipt-channel-actions { width: 100%; justify-content: flex-start; }
           .receipt-channel-toggle { justify-content: flex-start; }
           .receipt-channel-grid { grid-template-columns: 1fr; }
         }
-        @media print { .receipt-channel-toggle { display: none; } }
+        @media print { .receipt-channel-actions { display: none; } }
       `}</style>
     </section>,
     target,
