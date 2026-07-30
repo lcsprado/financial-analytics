@@ -163,7 +163,7 @@ function MultiClientControl({
 
   useEffect(() => {
     if (!open) return;
-    searchRef.current?.focus();
+    searchRef.current?.focus({ preventScroll: true });
 
     const closeOnOutside = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
@@ -194,15 +194,21 @@ function MultiClientControl({
   function applySelection(next: string[]) {
     const pageScroll = { x: window.scrollX, y: window.scrollY };
     const listScrollTop = listRef.current?.scrollTop ?? 0;
+    const restoreScroll = () => {
+      window.scrollTo(pageScroll.x, pageScroll.y);
+      if (listRef.current) listRef.current.scrollTop = listScrollTop;
+    };
     const unique = [...new Map(next.map((value) => [keyForScope(value, scope), value])).values()]
       .filter(Boolean);
     const nativeValue = ensureSelectionValue(select, unique, options, scope);
     setSelected(unique);
     setNativeSelect(select, nativeValue);
 
+    restoreScroll();
+    window.setTimeout(restoreScroll, 0);
     requestAnimationFrame(() => {
-      window.scrollTo(pageScroll.x, pageScroll.y);
-      if (listRef.current) listRef.current.scrollTop = listScrollTop;
+      restoreScroll();
+      requestAnimationFrame(restoreScroll);
     });
   }
 
@@ -276,15 +282,18 @@ function MultiClientControl({
               {visibleOptions.map((option) => {
                 const checked = selectedKeys.has(keyForScope(option.value, scope));
                 return (
-                  <label
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={checked}
                     key={keyForScope(option.value, scope)}
                     className={checked ? "is-selected" : ""}
                     onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => toggle(option)}
                   >
-                    <input type="checkbox" checked={checked} onChange={() => toggle(option)} />
                     <span className="multi-client-checkbox"><Check size={12} /></span>
                     <span title={option.label}>{option.label}</span>
-                  </label>
+                  </button>
                 );
               })}
               {!visibleOptions.length && <p>Nenhum cliente encontrado.</p>}
@@ -433,22 +442,20 @@ export default function ScopedClientFilterEnhancer() {
         .multi-client-toolbar button { padding: 3px 5px; border: 0; color: #5d72f6; background: transparent; font-size: 9px; font-weight: 800; }
         .multi-client-toolbar button:disabled { color: #b4bac6; }
         .multi-client-list { max-height: 270px; padding: 5px 0 1px; overflow-y: auto; overscroll-behavior: contain; }
-        .multi-client-list label {
+        .multi-client-list > button {
+          width: 100%; border: 0; background: transparent; text-align: left;
           min-height: 34px; padding: 6px 7px; display: grid; grid-template-columns: 18px minmax(0,1fr);
           gap: 8px; align-items: center; border-radius: 7px; color: #303849; cursor: pointer;
           font-size: 11px; font-weight: 650;
         }
-        .multi-client-list label:hover, .multi-client-list label.is-selected { background: #f1f3ff; }
-        .multi-client-list label > input {
-          position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0;
-          pointer-events: none; overflow: hidden; clip-path: inset(50%);
-        }
-        .multi-client-list label > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .multi-client-list > button:hover, .multi-client-list > button.is-selected { background: #f1f3ff; }
+        .multi-client-list > button:focus-visible { outline: 2px solid #5d72f6; outline-offset: -2px; }
+        .multi-client-list > button > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .multi-client-checkbox {
           width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid #cfd5e1;
           border-radius: 4px; color: transparent; background: #fff;
         }
-        .multi-client-list label.is-selected .multi-client-checkbox { color: #fff; border-color: #5d72f6; background: #5d72f6; }
+        .multi-client-list > button.is-selected .multi-client-checkbox { color: #fff; border-color: #5d72f6; background: #5d72f6; }
         .multi-client-list > p { margin: 18px 8px; color: #929aac; font-size: 11px; text-align: center; }
         @media (max-width: 760px) {
           .client-filter, .client-filter .select-wrap, .multi-client-navigation { width: 100% !important; }
