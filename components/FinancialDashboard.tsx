@@ -61,6 +61,33 @@ const NAV_ITEMS: NavItem[] = [
 
 const PIE_COLORS = ["#5d72f6", "#22c7a9", "#f8b84e", "#ef718a", "#9b7cf7", "#58b9ee"];
 const STORAGE_KEY = "financial-analytics-data-v1";
+const CHANNEL_STORAGE_KEY = "financial-analytics-receipt-channels-v1";
+const INCLUDE_CHANNEL_STORAGE_KEY = "financial-analytics-include-receipt-channels-v1";
+const CHANNEL_EVENT = "financial-analytics-receipt-channels-updated";
+const INCLUDE_CHANNEL_EVENT = "financial-analytics-receipt-channels-include-changed";
+
+type ReceiptChannelEntry = {
+  receiptDate: string;
+  amount: number;
+  bank: string;
+};
+
+function readReceiptChannels(): ReceiptChannelEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(CHANNEL_STORAGE_KEY);
+    return raw ? (JSON.parse(raw).entries ?? []) as ReceiptChannelEntry[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function channelEntryMatchesPeriod(entry: ReceiptChannelEntry, filter: PeriodFilter) {
+  const date = new Date(`${entry.receiptDate}T12:00:00`);
+  return !Number.isNaN(date.getTime())
+    && (filter.year === "all" || date.getFullYear() === filter.year)
+    && (filter.month === "all" || date.getMonth() === filter.month);
+}
 
 function readStoredData(): ImportState | null {
   if (typeof window === "undefined") return null;
@@ -229,10 +256,28 @@ export default function FinancialDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [receiptChannels, setReceiptChannels] = useState<ReceiptChannelEntry[]>([]);
+  const [includeReceiptChannels, setIncludeReceiptChannels] = useState(false);
 
   useEffect(() => {
     const stored = readStoredData();
     if (stored) setData(stored);
+  }, []);
+
+  useEffect(() => {
+    const syncReceiptChannels = () => {
+      setReceiptChannels(readReceiptChannels());
+      setIncludeReceiptChannels(window.localStorage.getItem(INCLUDE_CHANNEL_STORAGE_KEY) === "true");
+    };
+    syncReceiptChannels();
+    window.addEventListener("storage", syncReceiptChannels);
+    window.addEventListener(CHANNEL_EVENT, syncReceiptChannels);
+    window.addEventListener(INCLUDE_CHANNEL_EVENT, syncReceiptChannels);
+    return () => {
+      window.removeEventListener("storage", syncReceiptChannels);
+      window.removeEventListener(CHANNEL_EVENT, syncReceiptChannels);
+      window.removeEventListener(INCLUDE_CHANNEL_EVENT, syncReceiptChannels);
+    };
   }, []);
 
   useEffect(() => {
@@ -246,7 +291,32 @@ export default function FinancialDashboard() {
 
   const years = useMemo(() => getAvailableYears(data.invoices, data.receipts), [data]);
   const clients = useMemo(() => [...new Set(data.invoices.map((item) => item.clientName))].sort(), [data.invoices]);
-  const dashboard = useMemo(() => calculateDashboard(data.invoices, data.receipts, filter), [data, filter]);
+  const dashboard = useMemo(() => {
+    const base = calculateDashboard(data.invoices, data.receipts, filter);
+    if (!includeReceiptChannels || filter.client) return base;
+
+    const periodChannels = receiptChannels.filter((entry) => channelEntryMatchesPeriod(entry, filter));
+    const channelTotal = periodChannels.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+    const monthly = base.monthly.map((month) => ({
+      ...month,
+      received: month.received + receiptChannels
+        .filter((entry) => {
+          const date = new Date(`${entry.receiptDate}T12:00:00`);
+          return !Number.isNaN(date.getTime())
+            && (filter.year === "all" || date.getFullYear() === filter.year)
+            && date.getMonth() === month.monthIndex;
+        })
+        .reduce((sum, entry) => sum + Number(entry.amount || 0), 0),
+    }));
+
+    return {
+      ...base,
+      received: base.received + channelTotal,
+      difference: base.emitted - base.received - channelTotal,
+      receiptCount: base.receiptCount + periodChannels.length,
+      monthly,
+    };
+  }, [data, filter, includeReceiptChannels, receiptChannels]);
   const hasData = data.invoices.length > 0 || data.receipts.length > 0;
 
   useEffect(() => {

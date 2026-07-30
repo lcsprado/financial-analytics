@@ -409,7 +409,7 @@ export default function ReceiptChannelSummary() {
             <div className="receipt-channel-grid">
               <ChannelCard title="Banco do Brasil" total={totals.brasil.total} cielo={totals.brasil.cielo} pix={totals.brasil.pix} icon={<Landmark size={16} />} />
               <ChannelCard title="Bradesco" total={totals.bradesco.total} cielo={totals.bradesco.cielo} pix={totals.bradesco.pix} icon={<Building2 size={16} />} />
-              <ChannelCard title="Total dos dois bancos" total={totals.total.total} cielo={totals.total.cielo} pix={totals.total.pix} icon={<Sigma size={16} />} featured />
+              <ChannelCard title="Total recebido nos dois bancos" total={totals.total.total} cielo={totals.total.cielo} pix={totals.total.pix} icon={<Sigma size={16} />} featured />
             </div>
           </>
         ) : (
@@ -491,14 +491,15 @@ export default function ReceiptChannelSummary() {
         .receipt-channel-period-summary svg { flex: 0 0 auto; color: #00a1d8; }
         .receipt-channel-period-summary strong { color: #202738; }
         .receipt-channel-period-summary em { margin: 0 6px; color: #b3bac8; font-style: normal; }
-        .receipt-channel-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
-        .receipt-channel-card { min-width: 0; padding: 11px; border: 1px solid #e7eaf1; border-radius: 9px; background: #fff; }
+        .receipt-channel-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
+        .receipt-channel-card { min-width: 0; padding: 13px 14px; border: 1px solid #e7eaf1; border-radius: 10px; background: #fff; }
         .receipt-channel-card.is-featured { border-color: #ccd4ff; background: #f2f4ff; }
+        .receipt-channel-card.is-featured { grid-column: 1 / -1; }
         .receipt-channel-card > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #707a8f; }
-        .receipt-channel-card > div span { overflow: hidden; font-size: 9px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; }
+        .receipt-channel-card > div span { font-size: 10px; font-weight: 850; line-height: 1.25; white-space: normal; }
         .receipt-channel-card > div i { display: grid; place-items: center; color: #5d72f6; }
-        .receipt-channel-card > strong { display: block; margin-top: 7px; color: #202738; font-size: 15px; }
-        .receipt-channel-card > small { display: block; margin-top: 5px; overflow: hidden; color: #8a93a5; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+        .receipt-channel-card > strong { display: block; margin-top: 8px; color: #202738; font-size: 18px; }
+        .receipt-channel-card > small { display: block; margin-top: 6px; color: #8a93a5; font-size: 9px; line-height: 1.35; white-space: normal; }
         .receipt-channel-card > small b { color: #657087; }
         .receipt-channel-card > small em { margin: 0 3px; font-style: normal; }
         .receipt-channel-empty { margin-top: 12px; min-height: 48px; padding: 10px; display: flex; align-items: center; gap: 8px; border: 1px dashed #dce1ea; border-radius: 9px; color: #7d879a; font-size: 9px; }
