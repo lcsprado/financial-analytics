@@ -5,10 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { canonicalClientName, clientKey } from "@/lib/clientNames";
 import { joinClientSelection, splitClientSelection } from "@/lib/clientSelection";
+import { ANALYSIS_DATA_EVENT, loadAnalysisState } from "@/lib/offlineStorage";
 import { canonicalReceiptClientName, receiptClientKey } from "@/lib/receiptClientNames";
 import type { ImportState } from "@/lib/types";
-
-const STORAGE_KEY = "financial-analytics-data-v1";
 
 type Scope = "overview" | "invoices" | "receipts" | "clients";
 type ClientOption = { label: string; value: string };
@@ -20,14 +19,6 @@ function normalize(value: string) {
     .toUpperCase()
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function readData(raw: string | null): ImportState {
-  try {
-    return raw ? JSON.parse(raw) as ImportState : { invoices: [], receipts: [] };
-  } catch {
-    return { invoices: [], receipts: [] };
-  }
 }
 
 function readScope(): Scope {
@@ -331,32 +322,38 @@ export default function ScopedClientFilterEnhancer() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [data, setData] = useState<ImportState>({ invoices: [], receipts: [] });
   const [scope, setScope] = useState<Scope>("overview");
-  const signatureRef = useRef("");
+
+  useEffect(() => {
+    let active = true;
+    void loadAnalysisState().then((stored) => {
+      if (active && stored) setData(stored);
+    });
+    const handleData = (event: Event) => {
+      setData((event as CustomEvent<ImportState>).detail);
+    };
+    window.addEventListener(ANALYSIS_DATA_EVENT, handleData);
+    return () => {
+      active = false;
+      window.removeEventListener(ANALYSIS_DATA_EVENT, handleData);
+    };
+  }, []);
 
   useEffect(() => {
     const sync = () => {
       const nextSelect = document.querySelector<HTMLSelectElement>(".client-filter select");
       const nextTarget = nextSelect?.parentElement ?? null;
-      const raw = window.localStorage.getItem(STORAGE_KEY);
       const nextScope = readScope();
-      const signature = `${raw ?? ""}|${nextScope}`;
       setSelect((current) => current === nextSelect ? current : nextSelect);
       setTarget((current) => current === nextTarget ? current : nextTarget);
       setScope((current) => current === nextScope ? current : nextScope);
-      if (signature !== signatureRef.current) {
-        signatureRef.current = signature;
-        setData(readData(raw));
-      }
     };
 
     sync();
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    window.addEventListener("storage", sync);
     const timer = window.setInterval(sync, 500);
     return () => {
       observer.disconnect();
-      window.removeEventListener("storage", sync);
       window.clearInterval(timer);
     };
   }, []);

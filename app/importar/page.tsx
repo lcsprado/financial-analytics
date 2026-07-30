@@ -4,14 +4,22 @@ import { ArrowLeft, CheckCircle2, FileSpreadsheet, LayoutDashboard, RefreshCcw, 
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { parseInvoiceWorkbook, parseReceiptWorkbook } from "@/lib/parsers";
 import {
-  CHANNEL_EVENT,
-  CHANNEL_STORAGE_KEY,
   parseChannelWorkbook,
 } from "@/components/ReceiptChannelSummary";
+import {
+  CHANNEL_DATA_EVENT,
+  hasStorageConsent,
+  loadAnalysisState,
+  saveAnalysisState,
+  saveChannelPayload,
+  saveImportedFile,
+  setStorageConsent,
+  STORAGE_CONSENT_EVENT,
+} from "@/lib/offlineStorage";
 import type { ImportState } from "@/lib/types";
 
-const STORAGE_KEY = "financial-analytics-data-v1";
 const LEGACY_STORAGE_KEY = "financial-analytics-director-workbook-v1";
+const LEGACY_MAIN_STORAGE_KEY = "financial-analytics-data-v1";
 
 type ImportKind = "invoices" | "receipts";
 
@@ -25,26 +33,16 @@ function removeLegacyDirectorState() {
 
   try {
     const legacy = JSON.parse(legacyRaw) as LegacySnapshot;
-    const mainRaw = window.localStorage.getItem(STORAGE_KEY);
+    const mainRaw = window.localStorage.getItem(LEGACY_MAIN_STORAGE_KEY);
     const main = mainRaw ? JSON.parse(mainRaw) as ImportState : null;
 
     if (legacy.fileName && main?.invoiceFileName === legacy.fileName) {
-      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(LEGACY_MAIN_STORAGE_KEY);
     }
   } catch {
     // O estado legado inválido pode ser descartado sem afetar as bases normais.
   } finally {
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-  }
-}
-
-function readStoredData(): ImportState {
-  try {
-    removeLegacyDirectorState();
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) as ImportState : { invoices: [], receipts: [] };
-  } catch {
-    return { invoices: [], receipts: [] };
   }
 }
 
@@ -118,8 +116,18 @@ export default function ImportarPage() {
   const [loading, setLoading] = useState<ImportKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [storageConsent, setStorageConsentState] = useState(false);
 
-  useEffect(() => setData(readStoredData()), []);
+  useEffect(() => {
+    removeLegacyDirectorState();
+    setStorageConsentState(hasStorageConsent());
+    void loadAnalysisState().then((stored) => {
+      if (stored) setData(stored);
+    });
+    const handleConsent = () => setStorageConsentState(hasStorageConsent());
+    window.addEventListener(STORAGE_CONSENT_EVENT, handleConsent);
+    return () => window.removeEventListener(STORAGE_CONSENT_EVENT, handleConsent);
+  }, []);
 
   async function handleFile(kind: ImportKind, file: File) {
     setLoading(kind);
@@ -127,7 +135,7 @@ export default function ImportarPage() {
     setNotice(null);
 
     try {
-      const current = readStoredData();
+      const current = hasStorageConsent() ? (await loadAnalysisState()) ?? data : data;
       let next: ImportState;
 
       if (kind === "invoices") {
@@ -137,6 +145,7 @@ export default function ImportarPage() {
           invoices,
           invoiceFileName: file.name,
         };
+        await saveImportedFile("invoices", file);
         setNotice(`${invoices.length.toLocaleString("pt-BR")} emissões importadas com sucesso.`);
       } else {
         const [receipts, channels] = await Promise.all([
@@ -148,15 +157,18 @@ export default function ImportarPage() {
           receipts,
           receiptFileName: file.name,
         };
-        window.localStorage.setItem(CHANNEL_STORAGE_KEY, JSON.stringify(channels));
-        window.dispatchEvent(new Event(CHANNEL_EVENT));
+        await Promise.all([
+          saveImportedFile("receipts", file),
+          saveChannelPayload(channels),
+        ]);
+        window.dispatchEvent(new Event(CHANNEL_DATA_EVENT));
         setNotice(
           `${receipts.length.toLocaleString("pt-BR")} recebimentos e `
           + `${channels.entries.length.toLocaleString("pt-BR")} lançamentos Cielo/PIX importados com sucesso.`,
         );
       }
 
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      await saveAnalysisState(next);
       setData(next);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível processar o arquivo.");
@@ -209,6 +221,24 @@ export default function ImportarPage() {
             />
           </div>
 
+          <label className="offline-storage-choice">
+            <input
+              type="checkbox"
+              checked={storageConsent}
+              onChange={(event) => {
+                setStorageConsent(event.target.checked);
+                setStorageConsentState(event.target.checked);
+                if (event.target.checked && (data.invoices.length || data.receipts.length)) {
+                  void saveAnalysisState(data);
+                }
+              }}
+            />
+            <span>
+              <strong>Guardar planilhas e análise neste dispositivo</strong>
+              <small>Necessário para recuperar esta importação ao abrir o dashboard. Validade de até 30 dias.</small>
+            </span>
+          </label>
+
           <div className="import-results">
             <div><span className="result-icon violet"><FileSpreadsheet /></span><strong>{data.invoices.length.toLocaleString("pt-BR")}</strong><span>emissões carregadas</span></div>
             <div><span className="result-icon green"><UploadCloud /></span><strong>{data.receipts.length.toLocaleString("pt-BR")}</strong><span>recebimentos carregados</span></div>
@@ -220,7 +250,7 @@ export default function ImportarPage() {
           </div>
 
           <div className="import-actions">
-            <button className="primary-button" type="button" onClick={() => window.location.assign("/")} disabled={!hasData}>
+            <button className="primary-button" type="button" onClick={() => window.location.assign("/")} disabled={!hasData || !storageConsent}>
               <LayoutDashboard size={17} /> Abrir dashboard
             </button>
           </div>

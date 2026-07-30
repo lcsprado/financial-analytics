@@ -1,7 +1,6 @@
 import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
 import DashboardKpiCleanup from "@/components/DashboardKpiCleanup";
 import DashboardVisualControls from "@/components/DashboardVisualControls";
-import EmptyStateImportRedirect from "@/components/EmptyStateImportRedirect";
 import FinancialDashboard from "@/components/FinancialDashboard";
 import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
@@ -19,7 +18,6 @@ export default function Home() {
       <PrintButton />
       <FinancialDashboard />
       <ReportSourceLabels />
-      <EmptyStateImportRedirect />
       <ClientFilterSearchEnhancer />
       <ScopedClientFilterEnhancer />
       <DashboardKpiCleanup />

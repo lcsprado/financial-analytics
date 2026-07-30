@@ -17,7 +17,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
-body { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { padding-bottom: 74px; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 
@@ -203,9 +203,60 @@ td.number strong { color: #343b4d; }
 .privacy-note div { display: flex; flex-direction: column; gap: 4px; }
 .privacy-note strong { font-size: 11px; }
 .privacy-note span { font-size: 10px; opacity: .8; }
+.offline-storage-choice {
+  margin-top: 16px; padding: 15px; display: grid; grid-template-columns: 18px 1fr;
+  gap: 10px; align-items: start; color: #3f4c68; border: 1px solid #dfe4ef;
+  border-radius: 11px; background: #fafbfe; cursor: pointer;
+}
+.offline-storage-choice input { width: 17px; height: 17px; margin: 1px 0 0; accent-color: var(--primary); }
+.offline-storage-choice span { display: flex; flex-direction: column; gap: 4px; }
+.offline-storage-choice strong { font-size: 11px; }
+.offline-storage-choice small { color: var(--muted); font-size: 10px; line-height: 1.45; }
 .import-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 9px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.connection-notice {
+  position: fixed; z-index: 1500; left: 50%; top: 12px; transform: translateX(-50%);
+  padding: 9px 13px; border-radius: 999px; color: white; font-size: 11px; font-weight: 800;
+  box-shadow: 0 8px 24px rgba(31,40,75,.2);
+}
+.connection-notice.is-offline { background: #a35b14; }
+.connection-notice.is-online { background: #16826b; }
+.update-notice {
+  position: fixed; z-index: 1490; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px; color: white; background: #252c45;
+  box-shadow: 0 10px 28px rgba(31,40,75,.22); font-size: 11px;
+}
+.update-notice button { border: 0; border-radius: 7px; padding: 7px 9px; color: #252c45; background: white; font-weight: 800; }
+.pwa-controls { position: fixed; z-index: 1480; right: 16px; bottom: 16px; }
+.pwa-menu-button {
+  border: 1px solid #d9deea; border-radius: 999px; padding: 9px 13px;
+  color: #48526a; background: rgba(255,255,255,.97); font-size: 11px; font-weight: 800;
+  box-shadow: 0 7px 22px rgba(31,40,75,.14);
+}
+.pwa-menu {
+  position: absolute; right: 0; bottom: calc(100% + 9px); width: min(340px, calc(100vw - 28px));
+  padding: 16px; border: 1px solid #dfe3ed; border-radius: 14px; background: white;
+  box-shadow: 0 18px 50px rgba(31,40,75,.2);
+}
+.pwa-menu > div:first-child { display: flex; flex-direction: column; gap: 4px; margin-bottom: 13px; }
+.pwa-menu > div:first-child strong { font-size: 12px; }
+.pwa-menu small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.pwa-primary-action, .pwa-clear-action {
+  width: 100%; border-radius: 8px; padding: 10px 12px; font-weight: 800; font-size: 11px;
+}
+.pwa-primary-action { border: 0; color: white; background: var(--primary); }
+.pwa-clear-action { margin-top: 11px; border: 1px solid #efc7ce; color: #a33a4d; background: #fffafb; }
+.pwa-installed { display: block; margin-bottom: 10px; color: var(--green); font-size: 11px; font-weight: 800; }
+.pwa-storage-option {
+  display: grid; grid-template-columns: 18px 1fr; gap: 9px; align-items: start;
+  margin-top: 12px; padding: 11px; border-radius: 9px; background: #f6f7fb; cursor: pointer;
+}
+.pwa-storage-option input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--primary); }
+.pwa-storage-option span { display: flex; flex-direction: column; gap: 3px; }
+.pwa-storage-option b { font-size: 11px; }
+.pwa-message { margin: 10px 0 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
 
 @media (max-width: 1180px) {
   .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -252,4 +303,7 @@ td.number strong { color: #343b4d; }
   .import-intro h2 { font-size: 25px; }
   .import-actions { flex-direction: column; }
   .import-actions button { width: 100%; }
+  .connection-notice { top: 8px; max-width: calc(100vw - 24px); white-space: nowrap; }
+  .update-notice { left: 10px; right: 10px; bottom: 62px; justify-content: space-between; }
+  .pwa-controls { right: 10px; bottom: 10px; }
 }
