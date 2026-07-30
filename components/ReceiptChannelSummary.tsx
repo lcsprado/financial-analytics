@@ -214,9 +214,8 @@ function inPeriod(dateValue: string, filter: PeriodFilter) {
     && (filter.month === "all" || date.getMonth() === filter.month);
 }
 
-function findBankPanel() {
-  return Array.from(document.querySelectorAll<HTMLElement>(".panel"))
-    .find((panel) => panel.querySelector("h2")?.textContent?.trim() === "Recebimentos por banco") ?? null;
+function findKpiSlot() {
+  return document.querySelector<HTMLElement>("#receipt-channel-kpi-slot");
 }
 
 function periodLabel(filter: PeriodFilter) {
@@ -267,7 +266,7 @@ export default function ReceiptChannelSummary() {
     const sync = () => {
       const channelRaw = window.localStorage.getItem(CHANNEL_STORAGE_KEY);
       const nextFilter = readFilters();
-      const nextTarget = normalize(nextFilter.view) === "VISAO GERAL" ? findBankPanel() : null;
+      const nextTarget = normalize(nextFilter.view) === "VISAO GERAL" ? findKpiSlot() : null;
       const nextIncluded = window.localStorage.getItem(INCLUDE_STORAGE_KEY) === "true";
       const signature = [
         channelRaw ?? "",
@@ -354,9 +353,9 @@ export default function ReceiptChannelSummary() {
     <section className="receipt-channel-summary">
       <div className="receipt-channel-heading">
         <div>
-          <span>OUTROS RECEBIMENTOS</span>
-          <h3>Cielo e PIX recebido — cliente</h3>
-          <p>{periodLabel(periodFilter)} · Banco do Brasil e Bradesco</p>
+          <span>COMPOSIÇÃO CIELO</span>
+          <h3>{currency.format(totals.total.total)}</h3>
+          <p>{periodLabel(periodFilter)} · Cielo + PIX recebido</p>
         </div>
         <div className="receipt-channel-actions">
           <button
@@ -398,18 +397,9 @@ export default function ReceiptChannelSummary() {
       {showDetails && (
         payload.entries.length ? (
           <>
-            <div className="receipt-channel-period-summary">
-              <CreditCard size={17} />
-              <span>
-                Cielo no período: <strong>{currency.format(totals.total.cielo)}</strong>
-                <em>•</em>
-                Cielo + PIX recebido: <strong>{currency.format(totals.total.total)}</strong>
-              </span>
-            </div>
-            <div className="receipt-channel-grid">
-              <ChannelCard title="Banco do Brasil" total={totals.brasil.total} cielo={totals.brasil.cielo} pix={totals.brasil.pix} icon={<Landmark size={16} />} />
-              <ChannelCard title="Bradesco" total={totals.bradesco.total} cielo={totals.bradesco.cielo} pix={totals.bradesco.pix} icon={<Building2 size={16} />} />
-              <ChannelCard title="Total recebido nos dois bancos" total={totals.total.total} cielo={totals.total.cielo} pix={totals.total.pix} icon={<Sigma size={16} />} featured />
+            <div className="receipt-channel-breakdown">
+              <div><span><Landmark size={14} /> Banco do Brasil</span><strong>{currency.format(totals.brasil.total)}</strong><small>Cielo {currency.format(totals.brasil.cielo)} · PIX {currency.format(totals.brasil.pix)}</small></div>
+              <div><span><Building2 size={14} /> Bradesco</span><strong>{currency.format(totals.bradesco.total)}</strong><small>Cielo {currency.format(totals.bradesco.cielo)} · PIX {currency.format(totals.bradesco.pix)}</small></div>
             </div>
           </>
         ) : (
@@ -428,19 +418,21 @@ export default function ReceiptChannelSummary() {
 
       <style jsx global>{`
         .receipt-channel-summary {
-          margin: 18px 0 0;
-          padding: 15px;
-          border-top: 1px solid #edf0f5;
-          background: linear-gradient(180deg, rgba(247,249,253,.2), #f8faff);
-          border-radius: 0 0 12px 12px;
+          height: 100%;
+          min-height: 142px;
+          padding: 18px 20px;
+          border: 1px solid #dfe5f2;
+          background: linear-gradient(145deg, #ffffff, #f5f8ff);
+          border-radius: 14px;
+          box-shadow: var(--shadow);
         }
-        .receipt-channel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+        .receipt-channel-heading { height: 100%; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
         .receipt-channel-heading > div > span { color: #8b94a7; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
-        .receipt-channel-heading h3 { margin: 3px 0 0; color: #202738; font-size: 13px; }
-        .receipt-channel-heading p { margin: 3px 0 0; color: #858ea1; font-size: 9px; }
-        .receipt-channel-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+        .receipt-channel-heading h3 { margin: 9px 0 0; color: #202738; font-size: clamp(21px, 2vw, 28px); letter-spacing: -1.1px; }
+        .receipt-channel-heading p { margin: 7px 0 0; color: #858ea1; font-size: 9px; }
+        .receipt-channel-actions { max-width: 185px; display: flex; align-items: stretch; justify-content: flex-end; flex-direction: column; gap: 7px; }
         .receipt-channel-toggle {
-          min-width: 174px;
+          min-width: 0;
           display: flex;
           align-items: center;
           justify-content: flex-end;
@@ -475,6 +467,11 @@ export default function ReceiptChannelSummary() {
           cursor: pointer;
         }
         .receipt-channel-details-toggle:hover { color: #4258db; border-color: #cfd6ff; background: #f5f6ff; }
+        .receipt-channel-breakdown { margin-top: 14px; padding-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; border-top: 1px solid #e6eaf2; }
+        .receipt-channel-breakdown > div { min-width: 0; padding: 9px 10px; border: 1px solid #e7eaf1; border-radius: 9px; background: rgba(255,255,255,.88); }
+        .receipt-channel-breakdown span { display: flex; align-items: center; gap: 5px; color: #707a8f; font-size: 9px; font-weight: 850; }
+        .receipt-channel-breakdown strong { display: block; margin-top: 6px; color: #202738; font-size: 14px; }
+        .receipt-channel-breakdown small { display: block; margin-top: 4px; color: #8a93a5; font-size: 8px; line-height: 1.35; }
         .receipt-channel-period-summary {
           margin-top: 12px;
           min-height: 42px;
@@ -506,10 +503,10 @@ export default function ReceiptChannelSummary() {
         .receipt-channel-empty strong { color: #202738; }
         .receipt-channel-note { margin: 9px 0 0; color: #9b6b18; font-size: 8px; }
         @media (max-width: 900px) {
-          .receipt-channel-heading { align-items: flex-start; flex-direction: column; }
-          .receipt-channel-actions { width: 100%; justify-content: flex-start; }
-          .receipt-channel-toggle { justify-content: flex-start; }
-          .receipt-channel-grid { grid-template-columns: 1fr; }
+          .receipt-channel-heading { align-items: stretch; flex-direction: column; }
+          .receipt-channel-actions { width: 100%; max-width: none; flex-direction: row; justify-content: flex-start; }
+          .receipt-channel-toggle { flex: 1; justify-content: flex-start; }
+          .receipt-channel-grid, .receipt-channel-breakdown { grid-template-columns: 1fr; }
         }
         @media print { .receipt-channel-actions { display: none; } }
       `}</style>
