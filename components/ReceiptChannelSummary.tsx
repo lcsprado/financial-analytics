@@ -389,6 +389,7 @@ export default function ReceiptChannelSummary() {
           <span>OUTROS RECEBIMENTOS</span>
           <h3>Cielo e PIX recebido — cliente</h3>
           <p>{periodLabel(periodFilter)} · Banco do Brasil e Bradesco</p>
+          <strong className="receipt-channel-period-total">Cielo no período: {currency.format(totals.total.cielo)}</strong>
         </div>
         <button
           type="button"
@@ -432,6 +433,7 @@ export default function ReceiptChannelSummary() {
         .receipt-channel-heading > div > span { color: #8b94a7; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
         .receipt-channel-heading h3 { margin: 3px 0 0; color: #202738; font-size: 13px; }
         .receipt-channel-heading p { margin: 3px 0 0; color: #858ea1; font-size: 9px; }
+        .receipt-channel-period-total { display: block; margin-top: 7px; color: #00a1d8; font-size: 10px; font-weight: 900; }
         .receipt-channel-toggle {
           min-width: 174px;
           display: flex;

@@ -8,6 +8,8 @@ import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
 import PrintButton from "@/components/PrintButton";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
+import ReceiptChannelSummary from "@/components/ReceiptChannelSummary";
+import ReceiptChannelTotalSyncFix from "@/components/ReceiptChannelTotalSyncFix";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
 import ScopedClientFilterEnhancer from "@/components/ScopedClientFilterEnhancer";
@@ -28,6 +30,8 @@ export default function Home() {
       <ReceiptClientsFallback />
       <InvoiceDateRangeFilter />
       <ReceiptDateRangeFilter />
+      <ReceiptChannelSummary />
+      <ReceiptChannelTotalSyncFix />
     </>
   );
 }
