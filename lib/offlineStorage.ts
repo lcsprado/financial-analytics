@@ -34,6 +34,8 @@ export type StoredImportedFile = {
 const ANALYSIS_KEY = "analysis";
 const CHANNEL_KEY = "receipt-channels";
 
+let runtimeChannelPayload: unknown | null = null;
+
 function requestResult<T>(request: IDBRequest<T>) {
   return new Promise<T>((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -120,7 +122,11 @@ async function migrateLegacyStorage() {
 
   try {
     if (analysisRaw) await putRecord(ANALYSIS_KEY, JSON.parse(analysisRaw) as ImportState);
-    if (channelRaw) await putRecord(CHANNEL_KEY, JSON.parse(channelRaw));
+    if (channelRaw) {
+      const legacyPayload = JSON.parse(channelRaw);
+      runtimeChannelPayload = legacyPayload;
+      await putRecord(CHANNEL_KEY, legacyPayload);
+    }
     window.localStorage.removeItem(LEGACY_ANALYSIS_KEY);
     window.localStorage.removeItem(LEGACY_CHANNEL_KEY);
   } catch {
@@ -141,11 +147,15 @@ export async function saveAnalysisState(data: ImportState) {
 
 export async function loadChannelPayload<T>() {
   await migrateLegacyStorage();
+  if (runtimeChannelPayload !== null) return runtimeChannelPayload as T;
   if (!hasStorageConsent()) return null;
-  return getRecord<T>(CHANNEL_KEY);
+  const stored = await getRecord<T>(CHANNEL_KEY);
+  runtimeChannelPayload = stored;
+  return stored;
 }
 
 export async function saveChannelPayload<T>(payload: T) {
+  runtimeChannelPayload = payload;
   if (!hasStorageConsent()) return;
   await putRecord(CHANNEL_KEY, payload);
 }
@@ -180,6 +190,7 @@ export function notifyAnalysisData(data: ImportState) {
 }
 
 export async function clearOfflineData() {
+  runtimeChannelPayload = null;
   if ("indexedDB" in window) {
     const database = await openDatabase();
     const transaction = database.transaction(STORE_NAME, "readwrite");
