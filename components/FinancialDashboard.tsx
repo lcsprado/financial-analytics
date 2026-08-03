@@ -645,7 +645,10 @@ export default function FinancialDashboard() {
                 <Panel title="Notas emitidas" subtitle={`${integer.format(invoiceRows.length)} registros após os filtros`}>
                   <div className="table-toolbar">
                     <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por NF, cliente ou código" /></div>
-                    <span>Total: <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.grossValue, 0))}</strong></span>
+                    <div style={{ marginLeft: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", width: "32%", minWidth: 320 }}>
+                      <span style={{ textAlign: "right" }}>Total bruto: <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.grossValue, 0))}</strong></span>
+                      <span style={{ textAlign: "right" }}>Total líquido: <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.netValue, 0))}</strong></span>
+                    </div>
                   </div>
                   <div className="table-wrap">
                     <table>
