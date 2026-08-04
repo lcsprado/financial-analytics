@@ -10,7 +10,7 @@ export const REAL_SOCIEDADE_PORTUGUESA_CANONICAL_NAME = "REAL SOCIEDADE PORTUGUE
 export const REGISTRO_CANONICAL_NAME = "MUNICIPIO DE REGISTRO";
 export const SANTA_ANA_PARNAIBA_CANONICAL_NAME = "HOSPITAL MATERNIDADE SANTA ANNA - SANTANA DE PARNAÍBA";
 
-const RECEIPT_DOCUMENT_MARKER = /\s*(?:[-–—|:]\s*)?(?:N\.?\s*F\.?(?:\s*[ES])?|NOTAS?(?:\s+FISCAIS?)?)\s*(?:N[º°O.]?\s*)?[:.\-–—]?\s*\d/i;
+const RECEIPT_DOCUMENT_MARKER = /\s*(?:[-–—|:]\s*)?(?:N\.?\s*F\.?(?:\s*[ES])?|NOTAS?(?:\s+(?:FISCAL|FISCAIS))?)\s*(?:N[º°O.]?\s*)?[:.\-–—]?\s*\d/i;
 const RECEIPT_STATUS_SUFFIX = /\s*[\[(]?\s*(?:PARCIAL|FINAL|PARTE\s+FINAL)\s*[\])]?\s*$/i;
 
 /**
