@@ -8,7 +8,7 @@ export const HOSPITALIS_BARUERI_CANONICAL_NAME = "HOSPITALIS NUCLEO HOSPITALAR D
 export const CARAPICUIBA_CANONICAL_NAME = "MUNICIPIO DE CARAPICUIBA";
 export const REAL_SOCIEDADE_PORTUGUESA_CANONICAL_NAME = "REAL SOCIEDADE PORTUGUESA DE BENEFICÊNCIA";
 export const REGISTRO_CANONICAL_NAME = "MUNICIPIO DE REGISTRO";
-export const SANTA_ANA_PARNAIBA_CANONICAL_NAME = "ASSOCIAÇÃO GESTÃO, INOVAÇÃO E RESULTADOS EM SAÚDE - HOSPITAL MATERNIDADE SANTA ANA - SANTANA DE PARNAÍBA";
+export const SANTA_ANA_PARNAIBA_CANONICAL_NAME = "HOSPITAL MATERNIDADE SANTA ANNA - SANTANA DE PARNAÍBA";
 
 export function cleanReceiptClientName(value: string) {
   return value
@@ -19,21 +19,19 @@ export function cleanReceiptClientName(value: string) {
 }
 
 function isSantaAnaParnaibaAlias(normalized: string) {
-  const mentionsAssociation = normalized.includes("ASSOC");
-  const mentionsHealth = normalized.includes("SAUDE");
   const mentionsHospital = normalized.includes("HOSP");
   const mentionsMaternity = normalized.includes(" MAT ")
     || normalized.includes("MATERNIDADE");
-  const mentionsSantaAna = normalized.includes("SANTA ANA")
+  const mentionsSantaAnna = normalized.includes("SANTA ANNA")
+    || normalized.includes("STA ANNA")
+    || normalized.includes("SANTA ANA")
     || normalized.includes("STA ANA");
   const mentionsSantanaParnaiba = normalized.includes("SANTANA PARNAIBA")
     || normalized.includes("SANTANA DE PARNAIBA");
 
-  return mentionsAssociation
-    && mentionsHealth
-    && mentionsHospital
+  return mentionsHospital
     && mentionsMaternity
-    && mentionsSantaAna
+    && mentionsSantaAnna
     && mentionsSantanaParnaiba;
 }
 
