@@ -3,6 +3,7 @@ import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer"
 import DashboardKpiCleanup from "@/components/DashboardKpiCleanup";
 import DashboardVisualControls from "@/components/DashboardVisualControls";
 import FinancialDashboard from "@/components/FinancialDashboard";
+import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalizer";
 import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
@@ -20,6 +21,7 @@ export default function Home() {
       <FinancialDashboard />
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
+      <InvoiceClientCodeNormalizer />
       <ScopedClientFilterEnhancer />
       <ClientFilterInteractionFix />
       <DashboardKpiCleanup />
