@@ -8,6 +8,7 @@ export const HOSPITALIS_BARUERI_CANONICAL_NAME = "HOSPITALIS NUCLEO HOSPITALAR D
 export const CARAPICUIBA_CANONICAL_NAME = "MUNICIPIO DE CARAPICUIBA";
 export const REAL_SOCIEDADE_PORTUGUESA_CANONICAL_NAME = "REAL SOCIEDADE PORTUGUESA DE BENEFICÊNCIA";
 export const REGISTRO_CANONICAL_NAME = "MUNICIPIO DE REGISTRO";
+export const SANTA_ANA_PARNAIBA_CANONICAL_NAME = "ASSOCIAÇÃO GESTÃO, INOVAÇÃO E RESULTADOS EM SAÚDE - HOSPITAL MATERNIDADE SANTA ANA - SANTANA DE PARNAÍBA";
 
 export function cleanReceiptClientName(value: string) {
   return value
@@ -17,33 +18,56 @@ export function cleanReceiptClientName(value: string) {
     .trim();
 }
 
+function isSantaAnaParnaibaAlias(normalized: string) {
+  const mentionsAssociation = normalized.includes("ASSOC");
+  const mentionsHealth = normalized.includes("SAUDE");
+  const mentionsHospital = normalized.includes("HOSP");
+  const mentionsMaternity = normalized.includes(" MAT ")
+    || normalized.includes("MATERNIDADE");
+  const mentionsSantaAna = normalized.includes("SANTA ANA")
+    || normalized.includes("STA ANA");
+  const mentionsSantanaParnaiba = normalized.includes("SANTANA PARNAIBA")
+    || normalized.includes("SANTANA DE PARNAIBA");
+
+  return mentionsAssociation
+    && mentionsHealth
+    && mentionsHospital
+    && mentionsMaternity
+    && mentionsSantaAna
+    && mentionsSantanaParnaiba;
+}
+
 export function canonicalReceiptClientName(value: string) {
   const cleaned = cleanReceiptClientName(value);
-  const normalized = normalizeClientText(cleaned);
-  if (!normalized) return "";
+  const normalized = ` ${normalizeClientText(cleaned)} `;
+  if (!normalized.trim()) return "";
 
   if (normalized.includes("FUNDACAO DO ABC") && normalized.includes("COLETA ESPECIAL")) {
     return SAO_MATEUS_CANONICAL_NAME;
   }
 
-  if (normalized.startsWith("HOSPITALIS")
+  if (normalized.startsWith(" HOSPITALIS")
     && normalized.includes("NUCLEO HOSPITALAR DE BARUERI")
     && normalized.includes("MARIA HELENA")) {
     return HOSPITALIS_BARUERI_CANONICAL_NAME;
   }
 
   if (normalized.includes("FMS MUNICIPIO DE CARAPICUIBA")
-    || normalized.startsWith("SP 351060 MUNICIPIO DE CARAPICUIBA")) {
+    || normalized.includes(" SP 351060 MUNICIPIO DE CARAPICUIBA")) {
     return CARAPICUIBA_CANONICAL_NAME;
   }
 
-  if (normalized.startsWith("REAL SOCIEDADE PORTUGUESA DE BENEFIC")) {
+  if (normalized.startsWith(" REAL SOCIEDADE PORTUGUESA DE BENEFIC")) {
     return REAL_SOCIEDADE_PORTUGUESA_CANONICAL_NAME;
   }
 
   if (normalized.includes("POP PRIVADA DE LIBERDADE")
     && normalized.includes("MUNICIPIO DE REGISTRO")) {
     return REGISTRO_CANONICAL_NAME;
+  }
+
+  if (isSantaAnaParnaibaAlias(normalized)) {
+    return SANTA_ANA_PARNAIBA_CANONICAL_NAME;
   }
 
   return canonicalClientName(cleaned);
