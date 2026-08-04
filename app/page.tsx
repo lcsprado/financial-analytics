@@ -1,3 +1,4 @@
+import ClientFilterInteractionFix from "@/components/ClientFilterInteractionFix";
 import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
 import DashboardKpiCleanup from "@/components/DashboardKpiCleanup";
 import DashboardVisualControls from "@/components/DashboardVisualControls";
@@ -20,6 +21,7 @@ export default function Home() {
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
       <ScopedClientFilterEnhancer />
+      <ClientFilterInteractionFix />
       <DashboardKpiCleanup />
       <DashboardVisualControls />
       <MonthlyVariationEnhancer />
