@@ -10,10 +10,24 @@ export const REAL_SOCIEDADE_PORTUGUESA_CANONICAL_NAME = "REAL SOCIEDADE PORTUGUE
 export const REGISTRO_CANONICAL_NAME = "MUNICIPIO DE REGISTRO";
 export const SANTA_ANA_PARNAIBA_CANONICAL_NAME = "HOSPITAL MATERNIDADE SANTA ANNA - SANTANA DE PARNAÍBA";
 
+const RECEIPT_DOCUMENT_MARKER = /\s*(?:[-–—|:]\s*)?(?:N\.?\s*F\.?(?:\s*[ES])?|NOTAS?(?:\s+FISCAIS?)?)\s*(?:N[º°O.]?\s*)?[:.\-–—]?\s*\d/i;
+const RECEIPT_STATUS_SUFFIX = /\s*[\[(]?\s*(?:PARCIAL|FINAL|PARTE\s+FINAL)\s*[\])]?\s*$/i;
+
+/**
+ * Retorna somente a parte da descrição que identifica o cliente.
+ * Número da NF e observações posteriores, como parcial/final, não participam
+ * da chave usada para filtros e agrupamentos de recebimentos.
+ */
 export function cleanReceiptClientName(value: string) {
-  return value
-    .replace(/\s*[-–—]?\s*NFS?[\s.:-].*$/i, "")
-    .replace(/\s*[-–—]?\s*NOTAS?[\s.:-].*$/i, "")
+  const original = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!original) return "";
+
+  const markerIndex = original.search(RECEIPT_DOCUMENT_MARKER);
+  const beforeDocument = markerIndex >= 0 ? original.slice(0, markerIndex) : original;
+
+  return beforeDocument
+    .replace(RECEIPT_STATUS_SUFFIX, "")
+    .replace(/\s*[-–—|:]\s*$/, "")
     .replace(/\s+/g, " ")
     .trim();
 }
