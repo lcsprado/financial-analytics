@@ -32,6 +32,17 @@ type ChartPoint = {
   label: string;
   gross: number;
   net: number;
+  grossVariation: number | null;
+};
+
+type AxisTickProps = {
+  x?: number;
+  y?: number;
+  index?: number;
+  payload?: {
+    value?: string;
+    index?: number;
+  };
 };
 
 const MONTHS = [
@@ -86,7 +97,7 @@ function filteredRows(invoices: Invoice[], filters: FilterSnapshot) {
 
 function chartPoints(rows: Invoice[], filters: FilterSnapshot): ChartPoint[] {
   const groupByDay = filters.month !== "all" || Boolean(filters.startDate || filters.endDate);
-  const grouped = new Map<string, ChartPoint>();
+  const grouped = new Map<string, Omit<ChartPoint, "grossVariation">>();
 
   rows.forEach((invoice) => {
     const date = new Date(`${invoice.emissionDate}T12:00:00`);
@@ -107,7 +118,63 @@ function chartPoints(rows: Invoice[], filters: FilterSnapshot): ChartPoint[] {
     grouped.set(key, current);
   });
 
-  return [...grouped.values()].sort((a, b) => a.key.localeCompare(b.key));
+  const sorted = [...grouped.values()].sort((a, b) => a.key.localeCompare(b.key));
+
+  return sorted.map((point, index) => {
+    const previous = sorted[index - 1];
+    const grossVariation = previous && previous.gross !== 0
+      ? (point.gross - previous.gross) / Math.abs(previous.gross)
+      : null;
+
+    return { ...point, grossVariation };
+  });
+}
+
+function formatVariation(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const percentage = Math.abs(value * 100).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  if (value > 0) return `▲ ${percentage}%`;
+  if (value < 0) return `▼ ${percentage}%`;
+  return "● 0,0%";
+}
+
+function InvoiceXAxisTick({
+  x = 0,
+  y = 0,
+  index,
+  payload,
+  points,
+  showVariation,
+}: AxisTickProps & {
+  points: ChartPoint[];
+  showVariation: boolean;
+}) {
+  const pointIndex = index ?? payload?.index ?? -1;
+  const point = points[pointIndex];
+  const variation = point?.grossVariation ?? null;
+  const variationColor = variation === null
+    ? "#a1a8b7"
+    : variation > 0
+      ? "#149b7e"
+      : variation < 0
+        ? "#d65469"
+        : "#788198";
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={12} textAnchor="middle" fill="#788198" fontSize={11}>
+        {payload?.value}
+      </text>
+      {showVariation && (
+        <text x={0} y={0} dy={29} textAnchor="middle" fill={variationColor} fontSize={10} fontWeight={800}>
+          {formatVariation(variation)}
+        </text>
+      )}
+    </g>
+  );
 }
 
 function InvoiceChartTooltip({
@@ -116,10 +183,11 @@ function InvoiceChartTooltip({
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ name?: string; value?: number }>;
+  payload?: Array<{ name?: string; value?: number; payload?: ChartPoint }>;
   label?: string;
 }) {
   if (!active || !payload?.length) return null;
+  const variation = payload[0]?.payload?.grossVariation ?? null;
 
   return (
     <div className="invoice-chart-tooltip">
@@ -127,6 +195,7 @@ function InvoiceChartTooltip({
       {payload.map((item) => (
         <span key={item.name}>{item.name}: <b>{currency.format(Number(item.value ?? 0))}</b></span>
       ))}
+      <span>Variação do bruto: <b className={variation !== null && variation < 0 ? "negative" : "positive"}>{formatVariation(variation)}</b></span>
     </div>
   );
 }
@@ -238,6 +307,7 @@ export default function InvoiceAnalyticsEnhancer() {
   const gross = useMemo(() => rows.reduce((sum, item) => sum + item.grossValue, 0), [rows]);
   const net = useMemo(() => rows.reduce((sum, item) => sum + item.netValue, 0), [rows]);
   const ticket = rows.length ? gross / rows.length : 0;
+  const showMonthlyVariation = filters.month === "all" && !filters.startDate && !filters.endDate;
 
   useEffect(() => {
     if (!panel) return;
@@ -254,8 +324,8 @@ export default function InvoiceAnalyticsEnhancer() {
           <div className="invoice-chart-heading">
             <div>
               <strong>Evolução das emissões</strong>
-              <span>{filters.month === "all" && !filters.startDate && !filters.endDate
-                ? "Valores bruto e líquido por mês"
+              <span>{showMonthlyVariation
+                ? "Valores bruto e líquido por mês • variação do bruto em relação ao período anterior"
                 : "Valores bruto e líquido por dia"}</span>
             </div>
             <small>Fonte: FINR020 — relatório 1</small>
@@ -263,14 +333,15 @@ export default function InvoiceAnalyticsEnhancer() {
           {points.length ? (
             <div className="invoice-chart-box">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={points} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
+                <BarChart data={points} margin={{ top: 10, right: 8, left: 8, bottom: showMonthlyVariation ? 18 : 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e8ebf2" vertical={false} />
                   <XAxis
                     dataKey="label"
                     tickLine={false}
                     axisLine={false}
                     minTickGap={18}
-                    tick={{ fill: "#788198", fontSize: 11 }}
+                    height={showMonthlyVariation ? 46 : 28}
+                    tick={<InvoiceXAxisTick points={points} showVariation={showMonthlyVariation} />}
                   />
                   <YAxis
                     tickFormatter={(value) => compactCurrency.format(Number(value))}
@@ -329,7 +400,7 @@ export default function InvoiceAnalyticsEnhancer() {
           font-weight: 800;
           white-space: nowrap;
         }
-        .invoice-chart-box { width: 100%; height: 250px; }
+        .invoice-chart-box { width: 100%; height: 282px; }
         .invoice-chart-empty {
           min-height: 110px;
           display: grid;
@@ -338,7 +409,7 @@ export default function InvoiceAnalyticsEnhancer() {
           font-size: 11px;
         }
         .invoice-chart-tooltip {
-          min-width: 150px;
+          min-width: 170px;
           padding: 9px 10px;
           display: grid;
           gap: 5px;
@@ -351,6 +422,8 @@ export default function InvoiceAnalyticsEnhancer() {
         .invoice-chart-tooltip strong { color: #303849; }
         .invoice-chart-tooltip span { color: #727c91; }
         .invoice-chart-tooltip b { color: #303849; }
+        .invoice-chart-tooltip b.positive { color: #149b7e; }
+        .invoice-chart-tooltip b.negative { color: #d65469; }
         [data-invoice-summary-slot] { margin-left: auto; }
         .invoice-summary-values {
           display: grid;
