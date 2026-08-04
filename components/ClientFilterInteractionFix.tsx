@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 function clearSearchInput() {
   const clearButton = document.querySelector<HTMLButtonElement>(
@@ -27,7 +27,19 @@ function clearSearchInput() {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function currentFilterScope() {
+  return document
+    .querySelector<HTMLElement>(".topbar-title h1")
+    ?.textContent
+    ?.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase() || "GERAL";
+}
+
 export default function ClientFilterInteractionFix() {
+  const scrollPositions = useRef<Record<string, number>>({});
+
   useEffect(() => {
     const handleGlobalClear = (event: MouseEvent) => {
       const target = event.target;
@@ -37,6 +49,57 @@ export default function ClientFilterInteractionFix() {
 
     document.addEventListener("mousedown", handleGlobalClear, true);
     return () => document.removeEventListener("mousedown", handleGlobalClear, true);
+  }, []);
+
+  useEffect(() => {
+    const listeners = new Map<HTMLElement, EventListener>();
+
+    const attachList = (list: HTMLElement) => {
+      if (listeners.has(list)) return;
+
+      const scope = currentFilterScope();
+      const handleScroll: EventListener = () => {
+        scrollPositions.current[scope] = list.scrollTop;
+      };
+
+      list.addEventListener("scroll", handleScroll, { passive: true });
+      listeners.set(list, handleScroll);
+
+      const restore = () => {
+        if (!list.isConnected) return;
+        list.scrollTop = scrollPositions.current[scope] ?? 0;
+      };
+
+      restore();
+      window.requestAnimationFrame(() => {
+        restore();
+        window.requestAnimationFrame(restore);
+      });
+    };
+
+    const syncLists = () => {
+      for (const [list, listener] of listeners) {
+        if (list.isConnected) continue;
+        list.removeEventListener("scroll", listener);
+        listeners.delete(list);
+      }
+
+      document
+        .querySelectorAll<HTMLElement>(".multi-client-list")
+        .forEach(attachList);
+    };
+
+    syncLists();
+    const observer = new MutationObserver(syncLists);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      listeners.forEach((listener, list) => {
+        list.removeEventListener("scroll", listener);
+      });
+      listeners.clear();
+    };
   }, []);
 
   return (
