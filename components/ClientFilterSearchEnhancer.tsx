@@ -95,6 +95,19 @@ function ClientSearchControl({ select }: { select: HTMLSelectElement }) {
     };
   }, [select]);
 
+  useEffect(() => {
+    const clearSearchOnFilterReset = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest(".clear-filter")) return;
+
+      setText("");
+      inputRef.current?.blur();
+    };
+
+    document.addEventListener("click", clearSearchOnFilterReset);
+    return () => document.removeEventListener("click", clearSearchOnFilterReset);
+  }, []);
+
   const selectedLabel = selectedCanonicalLabel(select);
   const selectedKey = clientKey(selectedLabel);
   const selectedIndex = selectedValue
