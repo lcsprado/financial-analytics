@@ -206,8 +206,10 @@ function applyForecastPanel(data: ImportState, scope: Scope, setScope: (scope: S
     confidenceSelect.dispatchEvent(new Event("change", { bubbles: true }));
     return;
   }
-  confidenceSelect?.querySelector<HTMLOptionElement>('option[value="Insuficiente"]')?.setAttribute("hidden", "true");
-  confidenceSelect?.querySelector<HTMLOptionElement>('option[value="Baixa"]')?.setAttribute("hidden", "true");
+  const insufficient = confidenceSelect?.querySelector<HTMLOptionElement>('option[value="Insuficiente"]');
+  const low = confidenceSelect?.querySelector<HTMLOptionElement>('option[value="Baixa"]');
+  if (insufficient && !insufficient.hidden) insufficient.hidden = true;
+  if (low && !low.hidden) low.hidden = true;
 
   const models = buildForecastModels(data.receipts, monthSelect.value);
   const modelByKey = new Map(models.map((model) => [model.key, model]));
@@ -231,7 +233,8 @@ function applyForecastPanel(data: ImportState, scope: Scope, setScope: (scope: S
       && (selectedClient === "all" || model?.clientKey === selectedClient)
       && (selectedConfidence === "Todas" || model?.confidence === selectedConfidence)
       && Boolean(model && modelMatchesScope(model, scope));
-    row.style.display = visible ? "" : "none";
+    const display = visible ? "" : "none";
+    if (row.style.display !== display) row.style.display = display;
     if (!visible || !model) return;
 
     setText(row.querySelector("td:nth-child(3) strong"), currency.format(model.remaining));
@@ -243,10 +246,11 @@ function applyForecastPanel(data: ImportState, scope: Scope, setScope: (scope: S
     confidence?.classList.add(model.confidence === "Alta" ? "alta" : "media");
 
     const statusCell = row.querySelector<HTMLElement>("td:nth-child(4)");
-    if (statusCell && model.actual) {
-      statusCell.innerHTML = `<span class="status partial"><b>Pagou a menor</b><small>Recebido ${currency.format(model.actual.total)} em ${model.actual.dates.map(formatDate).join(", ")}</small><small>Falta aproximadamente ${currency.format(model.remaining)}</small></span>`;
-    } else if (statusCell) {
-      statusCell.innerHTML = `<span class="status forecast"><b>Previsto</b><small>Data provável: ${formatDate(model.estimatedDate)}</small></span>`;
+    if (statusCell) {
+      const html = model.actual
+        ? `<span class="status partial"><b>Pagou a menor</b><small>Recebido ${currency.format(model.actual.total)} em ${model.actual.dates.map(formatDate).join(", ")}</small><small>Falta aproximadamente ${currency.format(model.remaining)}</small></span>`
+        : `<span class="status forecast"><b>Previsto</b><small>Data provável: ${formatDate(model.estimatedDate)}</small></span>`;
+      if (statusCell.innerHTML !== html) statusCell.innerHTML = html;
     }
   });
 
@@ -255,12 +259,13 @@ function applyForecastPanel(data: ImportState, scope: Scope, setScope: (scope: S
     [...clientSelect.options].forEach((option) => {
       if (option.value === "all") {
         setText(option, selectedWeek === "all" ? `Todos os previstos (${visibleClients.size})` : `Todos da semana (${visibleClients.size})`);
-        option.hidden = false;
+        if (option.hidden) option.hidden = false;
       } else {
-        option.hidden = !models.some((model) => model.clientKey === option.value
+        const hidden = !models.some((model) => model.clientKey === option.value
           && (selectedWeek === "all" || model.weekId === selectedWeek)
           && (selectedConfidence === "Todas" || model.confidence === selectedConfidence)
           && modelMatchesScope(model, scope));
+        if (option.hidden !== hidden) option.hidden = hidden;
       }
     });
   }
@@ -277,7 +282,7 @@ function applyForecastPanel(data: ImportState, scope: Scope, setScope: (scope: S
     setText(card.querySelector(":scope > strong"), value);
     setText(card.querySelector(":scope > small"), subtitle);
     card.classList.toggle("forecast-card-active-v9", scope === cardScope);
-    card.style.cursor = "pointer";
+    if (card.style.cursor !== "pointer") card.style.cursor = "pointer";
     card.onclick = () => setScope(scope === cardScope && cardScope !== "all" ? "all" : cardScope);
   };
   configureCard(0, "all", "A receber no período", currency.format(totalRemaining), `${visibleClients.size} clientes recorrentes ainda previstos`);
