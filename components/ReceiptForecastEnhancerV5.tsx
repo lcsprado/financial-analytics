@@ -21,6 +21,11 @@ type ActualReceiptSummary = {
   entries: number;
 };
 
+type MonthActuals = {
+  byClient: Map<string, ActualReceiptSummary>;
+  byWeek: Map<string, Map<string, ActualReceiptSummary>>;
+};
+
 type HistoryBasis = {
   clientName: string;
   months: Array<{ key: string; label: string; total: number }>;
@@ -34,8 +39,22 @@ function parseIsoDate(value: string) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function toIsoDate(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function weekKey(date: Date) {
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  return toIsoDate(monday);
 }
 
 function addMonths(date: Date, amount: number) {
@@ -68,8 +87,21 @@ function median(values: number[]) {
     : sorted[middle];
 }
 
-function buildActualsByMonth(receipts: Receipt[]) {
-  const result = new Map<string, Map<string, ActualReceiptSummary>>();
+function addToSummary(
+  target: Map<string, ActualReceiptSummary>,
+  clientKey: string,
+  receipt: Receipt,
+) {
+  const current = target.get(clientKey) ?? { total: 0, dates: [], entries: 0 };
+  current.total += receipt.amount;
+  current.entries += 1;
+  if (!current.dates.includes(receipt.receiptDate)) current.dates.push(receipt.receiptDate);
+  current.dates.sort();
+  target.set(clientKey, current);
+}
+
+function buildActuals(receipts: Receipt[]) {
+  const result = new Map<string, MonthActuals>();
 
   getSourceReceipts(receipts).forEach((receipt) => {
     const date = parseIsoDate(receipt.receiptDate);
@@ -77,15 +109,18 @@ function buildActualsByMonth(receipts: Receipt[]) {
     if (!date || !clientName || !Number.isFinite(receipt.amount) || receipt.amount <= 0) return;
 
     const receiptMonthKey = monthKey(date);
+    const receiptWeekKey = weekKey(date);
     const clientKey = normalizeClientKey(clientName);
-    const monthMap = result.get(receiptMonthKey) ?? new Map<string, ActualReceiptSummary>();
-    const current = monthMap.get(clientKey) ?? { total: 0, dates: [], entries: 0 };
-    current.total += receipt.amount;
-    current.entries += 1;
-    if (!current.dates.includes(receipt.receiptDate)) current.dates.push(receipt.receiptDate);
-    current.dates.sort();
-    monthMap.set(clientKey, current);
-    result.set(receiptMonthKey, monthMap);
+    const monthActuals = result.get(receiptMonthKey) ?? {
+      byClient: new Map<string, ActualReceiptSummary>(),
+      byWeek: new Map<string, Map<string, ActualReceiptSummary>>(),
+    };
+    const weekActuals = monthActuals.byWeek.get(receiptWeekKey) ?? new Map<string, ActualReceiptSummary>();
+
+    addToSummary(monthActuals.byClient, clientKey, receipt);
+    addToSummary(weekActuals, clientKey, receipt);
+    monthActuals.byWeek.set(receiptWeekKey, weekActuals);
+    result.set(receiptMonthKey, monthActuals);
   });
 
   return result;
@@ -95,10 +130,7 @@ function buildHistoryBasis(receipts: Receipt[], now = new Date()) {
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1, 12, 0, 0, 0);
   const months = Array.from({ length: HISTORY_MONTHS }, (_, index) => {
     const start = addMonths(currentMonth, index - HISTORY_MONTHS);
-    return {
-      key: monthKey(start),
-      label: MONTH_FORMATTER.format(start),
-    };
+    return { key: monthKey(start), label: MONTH_FORMATTER.format(start) };
   });
   const monthIndex = new Map(months.map((month, index) => [month.key, index]));
   const totals = new Map<string, { clientName: string; values: number[] }>();
@@ -146,7 +178,7 @@ function setText(element: Element | null, text: string) {
 function ForecastActualReceiptsSync({ data }: { data: ImportState }) {
   useEffect(() => {
     let frame = 0;
-    const actualsByMonth = buildActualsByMonth(data.receipts);
+    const actuals = buildActuals(data.receipts);
     const historyBasis = buildHistoryBasis(data.receipts);
 
     const sync = () => {
@@ -156,22 +188,31 @@ function ForecastActualReceiptsSync({ data }: { data: ImportState }) {
         if (!root) return;
 
         const selects = root.querySelectorAll<HTMLSelectElement>(".forecast-filter-bar-v3 select");
+        const clientSelect = selects.item(0);
         const monthSelect = selects.item(1);
-        if (!monthSelect) return;
+        const weekSelect = selects.item(2);
+        if (!monthSelect || !weekSelect) return;
+
         const selectedMonthKey = monthSelect.value;
-        const selectedMonthActuals = actualsByMonth.get(selectedMonthKey) ?? new Map<string, ActualReceiptSummary>();
+        const selectedWeekKey = weekSelect.value;
+        const selectedClientKey = clientSelect?.value ?? "all";
+        const monthActuals = actuals.get(selectedMonthKey) ?? {
+          byClient: new Map<string, ActualReceiptSummary>(),
+          byWeek: new Map<string, Map<string, ActualReceiptSummary>>(),
+        };
+        const weekOptions = [...weekSelect.options].filter((option) => option.value !== "all");
+        const weekIdByLabel = new Map(weekOptions.map((option) => [option.textContent?.trim() ?? "", option.value]));
 
         const headerRow = root.querySelector<HTMLTableRowElement>(".forecast-table-wrap-v3 thead tr");
         if (headerRow && !headerRow.querySelector(".forecast-status-header-v5")) {
           const header = document.createElement("th");
           header.className = "forecast-status-header-v5";
-          header.textContent = "Situação no mês";
+          header.textContent = "Situação na semana";
           const valueHeader = headerRow.children.item(4);
           if (valueHeader) valueHeader.after(header);
           else headerRow.append(header);
         }
 
-        const rowSummaries = new Map<string, { actual?: ActualReceiptSummary; row: HTMLTableRowElement }>();
         root.querySelectorAll<HTMLTableRowElement>(".forecast-table-wrap-v3 tbody tr").forEach((row) => {
           const clientName = row.querySelector<HTMLElement>(".forecast-client-v3 strong")?.textContent?.trim();
           if (!clientName) {
@@ -181,8 +222,11 @@ function ForecastActualReceiptsSync({ data }: { data: ImportState }) {
           }
 
           const clientKey = normalizeClientKey(clientName);
-          const actual = selectedMonthActuals.get(clientKey);
-          rowSummaries.set(clientKey, { actual, row });
+          const predictedWeekLabel = row.children.item(1)?.textContent?.trim() ?? "";
+          const predictedWeekKey = weekIdByLabel.get(predictedWeekLabel) ?? "outside";
+          const relevantWeekKey = selectedWeekKey === "all" ? predictedWeekKey : selectedWeekKey;
+          const actualInRelevantWeek = monthActuals.byWeek.get(relevantWeekKey)?.get(clientKey);
+          const actualInMonth = monthActuals.byClient.get(clientKey);
 
           let statusCell = row.querySelector<HTMLTableCellElement>(".forecast-status-cell-v5");
           if (!statusCell) {
@@ -193,23 +237,29 @@ function ForecastActualReceiptsSync({ data }: { data: ImportState }) {
             else row.append(statusCell);
           }
 
-          const signature = actual
-            ? `received:${actual.total}:${actual.dates.join(",")}:${actual.entries}`
-            : "forecast";
+          const signature = actualInRelevantWeek
+            ? `received:${relevantWeekKey}:${actualInRelevantWeek.total}:${actualInRelevantWeek.dates.join(",")}`
+            : actualInMonth
+              ? `other-week:${relevantWeekKey}:${actualInMonth.total}:${actualInMonth.dates.join(",")}`
+              : `forecast:${relevantWeekKey}`;
+
           if (statusCell.dataset.signature !== signature) {
             statusCell.dataset.signature = signature;
             statusCell.replaceChildren();
             const badge = document.createElement("strong");
             const detail = document.createElement("small");
-            if (actual) {
+
+            if (actualInRelevantWeek) {
               badge.className = "forecast-status-badge-v5 received";
-              badge.textContent = "Recebido no mês";
-              detail.textContent = `${currency.format(actual.total)} · ${receiptDateDescription(actual)}`;
+              badge.textContent = "Recebido nesta semana";
+              detail.textContent = `${currency.format(actualInRelevantWeek.total)} · ${receiptDateDescription(actualInRelevantWeek)}`;
               row.classList.add("forecast-row-received-v5");
             } else {
               badge.className = "forecast-status-badge-v5 forecast";
               badge.textContent = "Previsto";
-              detail.textContent = "Sem recebimento lançado neste mês";
+              detail.textContent = actualInMonth
+                ? `Sem recebimento nesta semana. Há ${currency.format(actualInMonth.total)} recebido em outra semana do mês.`
+                : "Sem recebimento lançado nesta semana.";
               row.classList.remove("forecast-row-received-v5");
             }
             statusCell.append(badge, detail);
@@ -217,22 +267,14 @@ function ForecastActualReceiptsSync({ data }: { data: ImportState }) {
         });
 
         const weekCards = root.querySelectorAll<HTMLButtonElement>(".forecast-weeks-v3 button");
-        const weekTotals = new Map<string, { clients: Set<string>; total: number }>();
-        rowSummaries.forEach(({ actual, row }, clientKey) => {
-          if (!actual) return;
-          const weekLabel = row.children.item(1)?.textContent?.trim();
-          if (!weekLabel) return;
-          const current = weekTotals.get(weekLabel) ?? { clients: new Set<string>(), total: 0 };
-          if (!current.clients.has(clientKey)) {
-            current.clients.add(clientKey);
-            current.total += actual.total;
-          }
-          weekTotals.set(weekLabel, current);
-        });
+        weekCards.forEach((card, index) => {
+          const cardWeekKey = weekOptions[index]?.value;
+          const weekActuals = cardWeekKey ? monthActuals.byWeek.get(cardWeekKey) : undefined;
+          const summaries = weekActuals
+            ? [...weekActuals.entries()].filter(([clientKey]) => selectedClientKey === "all" || clientKey === selectedClientKey)
+            : [];
+          const total = summaries.reduce((sum, [, summary]) => sum + summary.total, 0);
 
-        weekCards.forEach((card) => {
-          const weekLabel = card.querySelector("span")?.textContent?.trim() ?? "";
-          const summary = weekTotals.get(weekLabel);
           let receivedLine = card.querySelector<HTMLElement>(".forecast-week-received-v5");
           if (!receivedLine) {
             receivedLine = document.createElement("em");
@@ -241,9 +283,9 @@ function ForecastActualReceiptsSync({ data }: { data: ImportState }) {
           }
           setText(
             receivedLine,
-            summary
-              ? `${summary.clients.size} recebido${summary.clients.size === 1 ? "" : "s"} no mês · ${currency.format(summary.total)}`
-              : "Nenhum recebimento lançado no mês",
+            summaries.length
+              ? `${summaries.length} cliente${summaries.length === 1 ? "" : "s"} recebido${summaries.length === 1 ? "" : "s"} · ${currency.format(total)}`
+              : "Nenhum recebimento lançado nesta semana",
           );
         });
 
@@ -251,16 +293,27 @@ function ForecastActualReceiptsSync({ data }: { data: ImportState }) {
         setText(mainGridTitle, "Previsão e recebidos por semana");
 
         const kpiCards = root.querySelectorAll<HTMLElement>(".forecast-kpis-v3 article");
-        const visibleReceived = [...rowSummaries.values()].reduce((sum, item) => sum + (item.actual?.total ?? 0), 0);
-        if (kpiCards.item(0)) {
-          setText(kpiCards.item(0).querySelector("span"), "Estimativa histórica do mês");
-          let actualLine = kpiCards.item(0).querySelector<HTMLElement>(".forecast-kpi-actual-v5");
+        const selectedActualEntries = selectedWeekKey === "all"
+          ? [...monthActuals.byClient.entries()]
+          : [...(monthActuals.byWeek.get(selectedWeekKey)?.entries() ?? [])];
+        const filteredActualEntries = selectedActualEntries.filter(([clientKey]) =>
+          selectedClientKey === "all" || clientKey === selectedClientKey,
+        );
+        const receivedTotal = filteredActualEntries.reduce((sum, [, summary]) => sum + summary.total, 0);
+
+        if (kpiCards.item(1)) {
+          let actualLine = kpiCards.item(1).querySelector<HTMLElement>(".forecast-kpi-actual-v5");
           if (!actualLine) {
             actualLine = document.createElement("em");
             actualLine.className = "forecast-kpi-actual-v5";
-            kpiCards.item(0).append(actualLine);
+            kpiCards.item(1).append(actualLine);
           }
-          setText(actualLine, `Já recebido nos clientes exibidos: ${currency.format(visibleReceived)}`);
+          setText(
+            actualLine,
+            selectedWeekKey === "all"
+              ? `Recebido no mês selecionado: ${currency.format(receivedTotal)}`
+              : `Recebido nesta semana: ${currency.format(receivedTotal)}`,
+          );
         }
 
         const detail = root.querySelector<HTMLElement>(".forecast-detail-v3");
@@ -271,19 +324,19 @@ function ForecastActualReceiptsSync({ data }: { data: ImportState }) {
           if (!basisBox) {
             basisBox = document.createElement("div");
             basisBox.className = "forecast-basis-v5";
-            const header = detail.querySelector(".forecast-panel-header-v3");
-            header?.after(basisBox);
+            detail.querySelector(".forecast-panel-header-v3")?.after(basisBox);
           }
           if (basisBox && basis) {
             const signature = `${basis.clientName}:${basis.months.map((month) => month.total).join(",")}:${basis.estimate}`;
             if (basisBox.dataset.signature !== signature) {
               basisBox.dataset.signature = signature;
               basisBox.replaceChildren();
+
               const heading = document.createElement("div");
               const title = document.createElement("strong");
               const subtitle = document.createElement("span");
               title.textContent = "Base usada no valor estimado";
-              subtitle.textContent = "Mediana dos totais mensais com recebimento nos três meses completos";
+              subtitle.textContent = "Mediana dos totais mensais recebidos nos três meses completos";
               heading.append(title, subtitle);
 
               const monthList = document.createElement("div");
@@ -358,23 +411,15 @@ export default function ReceiptForecastEnhancerV5() {
       <ForecastActualReceiptsSync data={data} />
       <style jsx global>{`
         .forecast-status-header-v5,
-        .forecast-status-cell-v5 {
-          min-width: 190px;
-        }
-
-        .forecast-status-cell-v5 {
-          display: table-cell;
-        }
-
+        .forecast-status-cell-v5 { min-width: 210px; }
         .forecast-status-cell-v5 small {
           display: block;
-          max-width: 225px;
+          max-width: 240px;
           margin-top: 5px;
           color: #8992a7;
           font-size: 9px;
           line-height: 1.45;
         }
-
         .forecast-status-badge-v5 {
           display: inline-flex;
           align-items: center;
@@ -384,21 +429,9 @@ export default function ReceiptForecastEnhancerV5() {
           font-weight: 800;
           white-space: nowrap;
         }
-
-        .forecast-status-badge-v5.received {
-          background: #e7f8f1;
-          color: #137a66;
-        }
-
-        .forecast-status-badge-v5.forecast {
-          background: #eef0ff;
-          color: #5266da;
-        }
-
-        .forecast-row-received-v5 td {
-          background: #fbfffd;
-        }
-
+        .forecast-status-badge-v5.received { background: #e7f8f1; color: #137a66; }
+        .forecast-status-badge-v5.forecast { background: #eef0ff; color: #5266da; }
+        .forecast-row-received-v5 td { background: #fbfffd; }
         .forecast-week-received-v5 {
           display: block;
           margin-top: 8px;
@@ -410,7 +443,6 @@ export default function ReceiptForecastEnhancerV5() {
           font-weight: 800;
           line-height: 1.4;
         }
-
         .forecast-kpi-actual-v5 {
           display: block;
           margin-top: 4px;
@@ -420,7 +452,6 @@ export default function ReceiptForecastEnhancerV5() {
           font-weight: 700;
           line-height: 1.35;
         }
-
         .forecast-basis-v5 {
           display: grid;
           grid-template-columns: minmax(220px, .8fr) minmax(420px, 1.4fr) minmax(210px, .7fr);
@@ -432,30 +463,14 @@ export default function ReceiptForecastEnhancerV5() {
           border-radius: 13px;
           background: #f9faff;
         }
-
-        .forecast-basis-v5 > div:first-child {
-          display: grid;
-          align-content: center;
-          gap: 4px;
-        }
-
-        .forecast-basis-v5 > div:first-child strong {
-          color: #303a54;
-          font-size: 12px;
-        }
-
-        .forecast-basis-v5 > div:first-child span {
-          color: #858ea3;
-          font-size: 9px;
-          line-height: 1.45;
-        }
-
+        .forecast-basis-v5 > div:first-child { display: grid; align-content: center; gap: 4px; }
+        .forecast-basis-v5 > div:first-child strong { color: #303a54; font-size: 12px; }
+        .forecast-basis-v5 > div:first-child span { color: #858ea3; font-size: 9px; line-height: 1.45; }
         .forecast-basis-months-v5 {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 8px;
         }
-
         .forecast-basis-months-v5 > span {
           display: grid;
           gap: 4px;
@@ -464,18 +479,8 @@ export default function ReceiptForecastEnhancerV5() {
           border-radius: 9px;
           background: #fff;
         }
-
-        .forecast-basis-months-v5 small {
-          color: #8992a7;
-          font-size: 8px;
-          text-transform: capitalize;
-        }
-
-        .forecast-basis-months-v5 b {
-          color: #3a445e;
-          font-size: 11px;
-        }
-
+        .forecast-basis-months-v5 small { color: #8992a7; font-size: 8px; text-transform: capitalize; }
+        .forecast-basis-months-v5 b { color: #3a445e; font-size: 11px; }
         .forecast-basis-result-v5 {
           display: grid;
           align-content: center;
@@ -485,26 +490,13 @@ export default function ReceiptForecastEnhancerV5() {
           background: #5d72f6;
           color: #fff;
         }
-
-        .forecast-basis-result-v5 span {
-          font-size: 9px;
-          opacity: .85;
-        }
-
-        .forecast-basis-result-v5 strong {
-          font-size: 15px;
-        }
-
+        .forecast-basis-result-v5 span { font-size: 9px; opacity: .85; }
+        .forecast-basis-result-v5 strong { font-size: 15px; }
         @media (max-width: 980px) {
-          .forecast-basis-v5 {
-            grid-template-columns: 1fr;
-          }
+          .forecast-basis-v5 { grid-template-columns: 1fr; }
         }
-
         @media (max-width: 620px) {
-          .forecast-basis-months-v5 {
-            grid-template-columns: 1fr;
-          }
+          .forecast-basis-months-v5 { grid-template-columns: 1fr; }
         }
       `}</style>
     </>
