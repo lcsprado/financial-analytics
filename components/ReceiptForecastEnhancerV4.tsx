@@ -30,9 +30,10 @@ function WeekClientFilterSync() {
           if (option.value === "all") {
             option.hidden = false;
             option.disabled = false;
-            option.textContent = isWeekFiltered
+            const label = isWeekFiltered
               ? `Todos da semana (${visibleClientNames.size})`
               : "Todos os clientes";
+            if (option.textContent !== label) option.textContent = label;
             return;
           }
 
@@ -44,7 +45,8 @@ function WeekClientFilterSync() {
 
         const tableSubtitle = root.querySelector<HTMLElement>(".forecast-table-header-v3 p");
         if (tableSubtitle && isWeekFiltered) {
-          tableSubtitle.textContent = `${visibleClientNames.size} clientes da semana selecionada`;
+          const label = `${visibleClientNames.size} clientes da semana selecionada`;
+          if (tableSubtitle.textContent !== label) tableSubtitle.textContent = label;
         }
       });
     };
