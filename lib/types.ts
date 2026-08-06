@@ -20,9 +20,24 @@ export type Receipt = {
   clientHint: string;
 };
 
+export type OpenReceivable = {
+  id: string;
+  clientCode: string;
+  clientName: string;
+  invoiceNumber: string;
+  titleNumber: string;
+  emissionDate: string;
+  dueDate: string;
+  originalValue: number;
+  openValue: number;
+  status: string;
+  sourceSheet: string;
+};
+
 export type ImportState = {
   invoices: Invoice[];
   receipts: Receipt[];
+  openReceivables?: OpenReceivable[];
   invoiceFileName?: string;
   receiptFileName?: string;
 };
