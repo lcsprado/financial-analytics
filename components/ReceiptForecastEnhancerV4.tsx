@@ -20,9 +20,21 @@ function WeekClientFilterSync() {
 
         const selectedWeek = weekSelect.value;
         const isWeekFiltered = selectedWeek !== "all";
+        const tableRows = [...root.querySelectorAll<HTMLTableRowElement>(
+          ".forecast-table-wrap-v3 tbody tr",
+        )].filter((row) => row.querySelector(".forecast-client-v3"));
+
+        tableRows.forEach((row) => {
+          const confidence = row.querySelector<HTMLElement>(".forecast-confidence-v3")
+            ?.textContent
+            ?.trim();
+          row.hidden = isWeekFiltered && confidence === "Insuficiente";
+        });
+
         const visibleClientNames = new Set(
-          [...root.querySelectorAll<HTMLElement>(".forecast-table-wrap-v3 tbody .forecast-client-v3 strong")]
-            .map((element) => element.textContent?.trim() ?? "")
+          tableRows
+            .filter((row) => !row.hidden)
+            .map((row) => row.querySelector<HTMLElement>(".forecast-client-v3 strong")?.textContent?.trim() ?? "")
             .filter(Boolean),
         );
 
