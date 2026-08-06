@@ -16,6 +16,14 @@ function text(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function cleanClientName(value: unknown) {
+  return text(value)
+    .replace(/\s*[-–—]?\s*CNPJ\s*[:.]?.*$/i, "")
+    .replace(/\s*[|\-–—]\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function numeric(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const raw = String(value ?? "").trim();
@@ -87,6 +95,205 @@ function headerScore(row: unknown[]) {
   return Number(hasClient) + Number(hasDue) + Number(hasValue);
 }
 
+type StructuredBlock = {
+  codeIndex: number;
+  clientIndex: number;
+  emissionIndex: number;
+  invoiceIndex: number;
+  valueIndex: number;
+  statusIndex: number;
+  dueIndex: number;
+  historyIndex: number;
+};
+
+const STRUCTURED_BLOCKS: StructuredBlock[] = [
+  {
+    codeIndex: 1,
+    clientIndex: 2,
+    emissionIndex: 1,
+    invoiceIndex: 2,
+    valueIndex: 3,
+    statusIndex: 4,
+    dueIndex: 5,
+    historyIndex: 9,
+  },
+  {
+    codeIndex: 11,
+    clientIndex: 12,
+    emissionIndex: 11,
+    invoiceIndex: 12,
+    valueIndex: 13,
+    statusIndex: 14,
+    dueIndex: 15,
+    historyIndex: 19,
+  },
+];
+
+function isStructuredClientRow(row: unknown[], block: StructuredBlock) {
+  const marker = normalize(row[block.historyIndex]);
+  const client = cleanClientName(row[block.clientIndex]);
+  return marker.startsWith("RECEBIMENTO")
+    && Boolean(client)
+    && client !== "-"
+    && !["EMISSAO", "NOTA", "TOTAL"].includes(normalize(client));
+}
+
+function isStructuredHeader(row: unknown[], block: StructuredBlock) {
+  return normalize(row[block.emissionIndex]).startsWith("EMIS")
+    && normalize(row[block.invoiceIndex]) === "NOTA"
+    && normalize(row[block.valueIndex]).includes("VALOR")
+    && normalize(row[block.dueIndex]).includes("VENC");
+}
+
+function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
+  const parsed: OpenReceivable[] = [];
+
+  for (const block of STRUCTURED_BLOCKS) {
+    let currentClientName = "";
+    let currentClientCode = "";
+    let insideClientTable = false;
+    let currentTitle: OpenReceivable | null = null;
+
+    const flushTitle = () => {
+      if (currentTitle && Number.isFinite(currentTitle.openValue) && currentTitle.openValue > 0) {
+        parsed.push(currentTitle);
+      }
+      currentTitle = null;
+    };
+
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex] ?? [];
+
+      if (isStructuredClientRow(row, block)) {
+        flushTitle();
+        currentClientName = cleanClientName(row[block.clientIndex]);
+        currentClientCode = text(row[block.codeIndex]);
+        insideClientTable = false;
+        continue;
+      }
+
+      if (currentClientName && isStructuredHeader(row, block)) {
+        flushTitle();
+        insideClientTable = true;
+        continue;
+      }
+
+      if (!currentClientName || !insideClientTable) continue;
+
+      const noteText = text(row[block.invoiceIndex]);
+      const noteNormalized = normalize(noteText);
+      if (noteNormalized === "TOTAL") {
+        flushTitle();
+        currentClientName = "";
+        currentClientCode = "";
+        insideClientTable = false;
+        continue;
+      }
+
+      const emissionDate = excelDateToISO(row[block.emissionIndex]);
+      const dueDate = excelDateToISO(row[block.dueIndex]);
+      const value = numeric(row[block.valueIndex]);
+      const status = text(row[block.statusIndex]);
+      const statusNormalized = normalize(status);
+
+      const isTitleRow = Boolean(noteText)
+        && noteNormalized !== "NOTA"
+        && value > 0
+        && Boolean(emissionDate || dueDate);
+
+      if (isTitleRow) {
+        flushTitle();
+        const currentInvoice = invoiceNumber(noteText);
+        currentTitle = {
+          id: `open-${sheetName}-${block.clientIndex}-${rowIndex}-${currentInvoice || noteText}`,
+          clientCode: currentClientCode,
+          clientName: currentClientName,
+          invoiceNumber: currentInvoice,
+          titleNumber: noteText,
+          emissionDate,
+          dueDate,
+          originalValue: value,
+          openValue: value,
+          status,
+          sourceSheet: sheetName,
+        };
+        continue;
+      }
+
+      if (!currentTitle || noteText || dueDate || !value) continue;
+
+      if (statusNormalized.includes("SALDO") && value > 0) {
+        currentTitle.openValue = value;
+        currentTitle.status = status;
+        continue;
+      }
+
+      const isPaymentAdjustment = value < 0
+        && ["PAGO", "PAGTO", "PAGAMENTO", "PARCIAL"].some((term) => statusNormalized.includes(term));
+      if (isPaymentAdjustment) {
+        currentTitle.openValue = Math.max(0, currentTitle.openValue + value);
+        currentTitle.status = [currentTitle.status, status].filter(Boolean).join("; ");
+      }
+    }
+
+    flushTitle();
+  }
+
+  return parsed;
+}
+
+function parseGenericTable(rows: unknown[][], sheetName: string) {
+  const receivables: OpenReceivable[] = [];
+  const headerRowIndex = rows
+    .slice(0, 60)
+    .map((row, index) => ({ index, score: headerScore(row) }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)[0];
+
+  if (!headerRowIndex || headerRowIndex.score < 2) return receivables;
+  const headers = rows[headerRowIndex.index];
+  const clientNameIndex = indexByPriority(headers, ["NOME CLIENTE", "RAZAO SOCIAL", "NOME DO CLIENTE", "CLIENTE"]);
+  const clientCodeIndex = indexByPriority(headers, ["COD CLIENTE", "CODIGO CLIENTE", "CLIENTE CODIGO", "CODIGO"]);
+  const invoiceIndex = indexByPriority(headers, ["NF ELETR", "NOTA FISCAL", "NUMERO NF", "NF", "NOTA", "DOCUMENTO"]);
+  const titleIndex = indexByPriority(headers, ["NO TITULO", "N TITULO", "NUMERO TITULO", "TITULO"]);
+  const emissionIndex = indexByPriority(headers, ["DATA DA EMISSAO", "DATA EMISSAO", "EMISSAO"]);
+  const dueIndex = indexByPriority(headers, ["DATA DE VENCIMENTO", "DATA VENCIMENTO", "DT VENCIMENTO", "VENCIMENTO", "VENCTO"]);
+  const originalValueIndex = indexByPriority(headers, ["VALOR ORIGINAL", "VALOR TITULO", "VLR TITULO", "VALOR"]);
+  const openValueIndex = indexByPriority(headers, ["SALDO EM ABERTO", "VALOR EM ABERTO", "VLR EM ABERTO", "SALDO ATUAL", "SALDO", "ABERTO"]);
+  const statusIndex = indexByPriority(headers, ["STATUS", "SITUACAO"]);
+
+  for (let rowIndex = headerRowIndex.index + 1; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex];
+    const clientName = clientNameIndex >= 0 ? cleanClientName(row[clientNameIndex]) : "";
+    const dueDate = dueIndex >= 0 ? excelDateToISO(row[dueIndex]) : "";
+    const originalValue = originalValueIndex >= 0 ? numeric(row[originalValueIndex]) : 0;
+    const openValue = openValueIndex >= 0 ? numeric(row[openValueIndex]) : originalValue;
+    const status = statusIndex >= 0 ? text(row[statusIndex]) : "";
+    const normalizedStatus = normalize(status);
+
+    if (!clientName || (!dueDate && !openValue && !originalValue)) continue;
+    if (normalizedStatus.includes("BAIXAD") || normalizedStatus.includes("PAGO") || normalizedStatus.includes("CANCEL")) continue;
+    if (!Number.isFinite(openValue) || openValue <= 0) continue;
+
+    const currentInvoice = invoiceIndex >= 0 ? invoiceNumber(row[invoiceIndex]) : "";
+    const currentTitle = titleIndex >= 0 ? text(row[titleIndex]) : "";
+    receivables.push({
+      id: `open-${sheetName}-${rowIndex}-${currentInvoice || currentTitle || clientName}`,
+      clientCode: clientCodeIndex >= 0 ? text(row[clientCodeIndex]) : "",
+      clientName,
+      invoiceNumber: currentInvoice,
+      titleNumber: currentTitle,
+      emissionDate: emissionIndex >= 0 ? excelDateToISO(row[emissionIndex]) : "",
+      dueDate,
+      originalValue: originalValue || openValue,
+      openValue,
+      status,
+      sourceSheet: sheetName,
+    });
+  }
+
+  return receivables;
+}
+
 export async function parseOpenReceivablesWorkbook(file: File): Promise<OpenReceivable[]> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
@@ -99,52 +306,10 @@ export async function parseOpenReceivablesWorkbook(file: File): Promise<OpenRece
       defval: "",
       raw: true,
     });
-    const headerRowIndex = rows
-      .slice(0, 60)
-      .map((row, index) => ({ index, score: headerScore(row) }))
-      .sort((left, right) => right.score - left.score || left.index - right.index)[0];
 
-    if (!headerRowIndex || headerRowIndex.score < 2) continue;
-    const headers = rows[headerRowIndex.index];
-    const clientNameIndex = indexByPriority(headers, ["NOME CLIENTE", "RAZAO SOCIAL", "NOME DO CLIENTE", "CLIENTE"]);
-    const clientCodeIndex = indexByPriority(headers, ["COD CLIENTE", "CODIGO CLIENTE", "CLIENTE CODIGO", "CODIGO"]);
-    const invoiceIndex = indexByPriority(headers, ["NF ELETR", "NOTA FISCAL", "NUMERO NF", "NF", "NOTA", "DOCUMENTO"]);
-    const titleIndex = indexByPriority(headers, ["NO TITULO", "N TITULO", "NUMERO TITULO", "TITULO"]);
-    const emissionIndex = indexByPriority(headers, ["DATA DA EMISSAO", "DATA EMISSAO", "EMISSAO"]);
-    const dueIndex = indexByPriority(headers, ["DATA DE VENCIMENTO", "DATA VENCIMENTO", "DT VENCIMENTO", "VENCIMENTO", "VENCTO"]);
-    const originalValueIndex = indexByPriority(headers, ["VALOR ORIGINAL", "VALOR TITULO", "VLR TITULO", "VALOR"]);
-    const openValueIndex = indexByPriority(headers, ["SALDO EM ABERTO", "VALOR EM ABERTO", "VLR EM ABERTO", "SALDO ATUAL", "SALDO", "ABERTO"]);
-    const statusIndex = indexByPriority(headers, ["STATUS", "SITUACAO"]);
-
-    for (let rowIndex = headerRowIndex.index + 1; rowIndex < rows.length; rowIndex += 1) {
-      const row = rows[rowIndex];
-      const clientName = clientNameIndex >= 0 ? text(row[clientNameIndex]) : "";
-      const dueDate = dueIndex >= 0 ? excelDateToISO(row[dueIndex]) : "";
-      const originalValue = originalValueIndex >= 0 ? numeric(row[originalValueIndex]) : 0;
-      const openValue = openValueIndex >= 0 ? numeric(row[openValueIndex]) : originalValue;
-      const status = statusIndex >= 0 ? text(row[statusIndex]) : "";
-      const normalizedStatus = normalize(status);
-
-      if (!clientName || (!dueDate && !openValue && !originalValue)) continue;
-      if (normalizedStatus.includes("BAIXAD") || normalizedStatus.includes("PAGO") || normalizedStatus.includes("CANCEL")) continue;
-      if (!Number.isFinite(openValue) || openValue <= 0) continue;
-
-      const currentInvoice = invoiceIndex >= 0 ? invoiceNumber(row[invoiceIndex]) : "";
-      const currentTitle = titleIndex >= 0 ? text(row[titleIndex]) : "";
-      receivables.push({
-        id: `open-${sheetName}-${rowIndex}-${currentInvoice || currentTitle || clientName}`,
-        clientCode: clientCodeIndex >= 0 ? text(row[clientCodeIndex]) : "",
-        clientName,
-        invoiceNumber: currentInvoice,
-        titleNumber: currentTitle,
-        emissionDate: emissionIndex >= 0 ? excelDateToISO(row[emissionIndex]) : "",
-        dueDate,
-        originalValue: originalValue || openValue,
-        openValue,
-        status,
-        sourceSheet: sheetName,
-      });
-    }
+    const structured = parseStructuredBlocks(rows, sheetName);
+    if (structured.length) receivables.push(...structured);
+    else receivables.push(...parseGenericTable(rows, sheetName));
   }
 
   const unique = new Map<string, OpenReceivable>();
@@ -152,5 +317,9 @@ export async function parseOpenReceivablesWorkbook(file: File): Promise<OpenRece
     const key = [normalize(item.clientName), item.invoiceNumber, item.titleNumber, item.dueDate, item.openValue.toFixed(2)].join("|");
     if (!unique.has(key)) unique.set(key, item);
   });
-  return [...unique.values()].sort((left, right) => left.dueDate.localeCompare(right.dueDate) || left.clientName.localeCompare(right.clientName, "pt-BR"));
+
+  return [...unique.values()].sort((left, right) =>
+    left.dueDate.localeCompare(right.dueDate)
+    || left.clientName.localeCompare(right.clientName, "pt-BR"),
+  );
 }
