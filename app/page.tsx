@@ -11,7 +11,7 @@ import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
 import PrintButton from "@/components/PrintButton";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
-import ReceiptForecastEnhancerV12 from "@/components/ReceiptForecastEnhancerV12";
+import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
 import ScopedClientFilterEnhancer from "@/components/ScopedClientFilterEnhancer";
 
@@ -33,7 +33,7 @@ export default function Home() {
       <InvoiceDateRangeFilter />
       <InvoiceAnalyticsEnhancer />
       <ReceiptDateRangeFilter />
-      <ReceiptForecastEnhancerV12 />
+      <ReceiptForecastEnhancerV13 />
     </>
   );
 }
