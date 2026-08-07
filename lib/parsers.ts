@@ -178,6 +178,13 @@ function hasClientName(description: string) {
     .some((token) => token.length >= 2 && !GENERIC_CLIENT_TERMS.has(token) && !/^\d+$/.test(token));
 }
 
+function isRed8NdReceipt(description: string) {
+  const normalized = normalizeHeader(description)
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ");
+  return /\bRED\s*8\s*-?\s*ND\b/.test(normalized);
+}
+
 function isMonthSheet(name: string) {
   const normalized = normalizeHeader(name);
   return MONTH_NAMES.some((month) => normalized.includes(normalizeHeader(month))) && /20\d{2}/.test(normalized);
@@ -248,14 +255,14 @@ function looksLikeClientReceipt(description: string) {
 
 function identifiedReceipt(description: string) {
   const invoiceNumbers = extractInvoiceNumbers(description);
-  const identifiedClient = clientHint(description);
+  const red8Nd = isRed8NdReceipt(description);
+  const identifiedClient = red8Nd ? "RED 8 - ND" : clientHint(description);
 
   return {
     invoiceNumbers,
     identifiedClient,
     isValid: looksLikeClientReceipt(description)
-      && invoiceNumbers.length > 0
-      && hasClientName(description),
+      && ((invoiceNumbers.length > 0 && hasClientName(description)) || red8Nd),
   };
 }
 
@@ -336,7 +343,7 @@ export async function parseReceiptWorkbook(file: File): Promise<Receipt[]> {
   }
 
   if (!receipts.length) {
-    throw new Error("Não encontrei recebimentos com NF e nome do cliente nas abas mensais da planilha de conciliação.");
+    throw new Error("Não encontrei recebimentos identificáveis nas abas mensais da planilha de conciliação.");
   }
 
   return receipts.sort((a, b) => a.receiptDate.localeCompare(b.receiptDate));
