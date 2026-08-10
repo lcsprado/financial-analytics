@@ -8,6 +8,7 @@ import DashboardVisualPolishV1 from "@/components/DashboardVisualPolishV1";
 import InvoiceAnalyticsEnhancer from "@/components/InvoiceAnalyticsEnhancer";
 import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
+import ReceiptClientIdentityRefresh from "@/components/ReceiptClientIdentityRefresh";
 import ReceiptClientLinkManager from "@/components/ReceiptClientLinkManager";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
@@ -120,6 +121,7 @@ export default function PerformanceScopedEnhancers() {
 
       {scope === "receipts" ? (
         <>
+          <ReceiptClientIdentityRefresh />
           <ReceiptClientLinkManager />
           <ReceiptDateRangeFilter />
         </>
