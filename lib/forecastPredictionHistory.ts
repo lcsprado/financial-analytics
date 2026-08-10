@@ -54,20 +54,48 @@ async function parseError(response: Response) {
 export async function syncForecastPredictionHistory(rows: ForecastPredictionSnapshot[]) {
   if (!rows.length) return;
   const now = new Date().toISOString();
-  const payload = rows.map((row) => ({
-    ...row,
-    last_evaluated_at: now,
-    updated_at: now,
-  }));
-  const response = await fetch(
+
+  const insert = await fetch(
     `${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=month_key,source_key`,
     {
       method: "POST",
-      headers: headers("resolution=merge-duplicates,return=minimal"),
-      body: JSON.stringify(payload),
+      headers: headers("resolution=ignore-duplicates,return=minimal"),
+      body: JSON.stringify(rows.map((row) => ({
+        ...row,
+        last_evaluated_at: now,
+        updated_at: now,
+      }))),
     },
   );
-  if (!response.ok) await parseError(response);
+  if (!insert.ok) await parseError(insert);
+
+  await Promise.all(rows.map(async (row) => {
+    const query = new URLSearchParams({
+      month_key: `eq.${row.month_key}`,
+      source_key: `eq.${row.source_key}`,
+    });
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?${query.toString()}`, {
+      method: "PATCH",
+      headers: headers(),
+      body: JSON.stringify({
+        client_key: row.client_key,
+        client_name: row.client_name,
+        confidence: row.confidence,
+        active_months: row.active_months,
+        actual_value: row.actual_value,
+        actual_dates: row.actual_dates,
+        outcome: row.outcome,
+        date_error_days: row.date_error_days,
+        value_error_ratio: row.value_error_ratio,
+        current_predicted_week_id: row.current_predicted_week_id,
+        current_predicted_date: row.current_predicted_date,
+        current_predicted_value: row.current_predicted_value,
+        last_evaluated_at: now,
+        updated_at: now,
+      }),
+    });
+    if (!response.ok) await parseError(response);
+  }));
 }
 
 export async function listForecastPredictionHistory(limit = 500) {
