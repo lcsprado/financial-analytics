@@ -26,6 +26,15 @@ const EMPTY_STATS: ReceiptIdentityStats = {
   manualMatches: 0,
 };
 
+function sameStats(left: ReceiptIdentityStats, right: ReceiptIdentityStats) {
+  return left.changedReceipts === right.changedReceipts
+    && left.aliasGroups === right.aliasGroups
+    && left.exactMasterMatches === right.exactMasterMatches
+    && left.fuzzyMasterMatches === right.fuzzyMasterMatches
+    && left.ambiguousMatches === right.ambiguousMatches
+    && left.manualMatches === right.manualMatches;
+}
+
 export default function ReceiptClientIdentityNormalizer() {
   const [stats, setStats] = useState<ReceiptIdentityStats>(EMPTY_STATS);
   const dispatching = useRef(false);
@@ -40,8 +49,10 @@ export default function ReceiptClientIdentityNormalizer() {
       if (!data?.receipts) return;
       dataRef.current = data;
       const result = normalizeReceiptClientIdentities(data, linksRef.current);
-      latestStats.current = result.stats;
-      setStats(result.stats);
+      if (!sameStats(latestStats.current, result.stats)) {
+        latestStats.current = result.stats;
+        setStats(result.stats);
+      }
 
       if (!result.changed || dispatching.current) return;
       dispatching.current = true;
@@ -122,17 +133,15 @@ export default function ReceiptClientIdentityNormalizer() {
       }
     };
 
+    const scheduleSync = () => window.setTimeout(sync, 0);
     sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    document.addEventListener("click", sync, true);
-    document.addEventListener("change", sync, true);
-    const timer = window.setInterval(sync, 900);
+    document.addEventListener("click", scheduleSync, true);
+    document.addEventListener("change", scheduleSync, true);
+    const timer = window.setInterval(sync, 1400);
 
     return () => {
-      observer.disconnect();
-      document.removeEventListener("click", sync, true);
-      document.removeEventListener("change", sync, true);
+      document.removeEventListener("click", scheduleSync, true);
+      document.removeEventListener("change", scheduleSync, true);
       window.clearInterval(timer);
     };
   }, [stats]);
