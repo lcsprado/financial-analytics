@@ -23,6 +23,11 @@ type Reference = {
   name: string;
 };
 
+type Decision = {
+  target: string;
+  kind: "manual" | "exact" | "fuzzy" | "ambiguous" | "none";
+};
+
 function buildMasterReferences(data: ImportState) {
   const normalizedInvoices = normalizeInvoiceClientsByCode(data.invoices ?? []);
   const names = [
@@ -86,6 +91,7 @@ function rawReceiptName(description: string, hint: string) {
  * Padroniza clientHint antes das análises de recebimentos/previsão.
  * Vínculos manuais são a regra de maior prioridade e usam o nome encontrado
  * na própria planilha de recebimentos. Depois vêm as correspondências automáticas.
+ * A decisão é calculada uma única vez por nome distinto para manter a navegação leve.
  */
 export function normalizeReceiptClientIdentities(data: ImportState, links: ReceiptClientLink[] = []) {
   const references = buildMasterReferences(data);
@@ -113,6 +119,30 @@ export function normalizeReceiptClientIdentities(data: ImportState, links: Recei
     if (preferred) receiptPreferred.set(key, preferred);
   });
 
+  const decisions = new Map<string, Decision>();
+  const getDecision = (name: string, rawName: string): Decision => {
+    const aliasKey = receiptAliasKey(rawName);
+    const identityKey = clientIdentityKey(name);
+    const cacheKey = `${aliasKey}::${identityKey}`;
+    const cached = decisions.get(cacheKey);
+    if (cached) return cached;
+
+    const manualTarget = manualByAlias.get(aliasKey);
+    if (manualTarget) {
+      const decision: Decision = { target: manualTarget, kind: "manual" };
+      decisions.set(cacheKey, decision);
+      return decision;
+    }
+
+    const match = bestMasterMatch(name, references);
+    const decision: Decision = {
+      target: match.name || receiptPreferred.get(identityKey) || name,
+      kind: match.kind,
+    };
+    decisions.set(cacheKey, decision);
+    return decision;
+  };
+
   let changedReceipts = 0;
   let exactMasterMatches = 0;
   let fuzzyMasterMatches = 0;
@@ -122,25 +152,17 @@ export function normalizeReceiptClientIdentities(data: ImportState, links: Recei
   const receipts = parsed.map(({ receipt, name, rawName }) => {
     if (!name) return receipt;
 
-    const manualTarget = manualByAlias.get(receiptAliasKey(rawName));
-    let target = manualTarget || "";
-
-    if (manualTarget) {
-      manualMatches += 1;
-    } else {
-      const key = clientIdentityKey(name);
-      const match = bestMasterMatch(name, references);
-      if (match.kind === "exact") exactMasterMatches += 1;
-      if (match.kind === "fuzzy") fuzzyMasterMatches += 1;
-      if (match.kind === "ambiguous") ambiguousMatches += 1;
-      target = match.name || receiptPreferred.get(key) || name;
-    }
+    const decision = getDecision(name, rawName);
+    if (decision.kind === "manual") manualMatches += 1;
+    if (decision.kind === "exact") exactMasterMatches += 1;
+    if (decision.kind === "fuzzy") fuzzyMasterMatches += 1;
+    if (decision.kind === "ambiguous") ambiguousMatches += 1;
 
     const current = canonicalReceiptClientName(receipt.clientHint || receipt.description);
-    if (!target || normalizeClientText(current) === normalizeClientText(target)) return receipt;
+    if (!decision.target || normalizeClientText(current) === normalizeClientText(decision.target)) return receipt;
 
     changedReceipts += 1;
-    return { ...receipt, clientHint: target };
+    return { ...receipt, clientHint: decision.target };
   });
 
   return {
