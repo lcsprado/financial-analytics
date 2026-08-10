@@ -13,6 +13,7 @@ import ReceiptClientLinkManager from "@/components/ReceiptClientLinkManager";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastComparativeCleanup";
+import ReceiptForecastCrossWeekFilterFix from "@/components/ReceiptForecastCrossWeekFilterFix";
 import ReceiptForecastReceivedRuleFix from "@/components/ReceiptForecastReceivedRuleFix";
 import ReceiptForecastWeekCardsPolishV15 from "@/components/ReceiptForecastWeekCardsPolishV15";
 import ScopedClientFilterEnhancerV2 from "@/components/ScopedClientFilterEnhancerV2";
@@ -133,6 +134,7 @@ export default function PerformanceScopedEnhancers() {
       {scope === "forecast" ? (
         <>
           <ReceiptForecastReceivedRuleFix />
+          <ReceiptForecastCrossWeekFilterFix />
           <ReceiptForecastComparativeCleanup />
           <ReceiptForecastWeekCardsPolishV15 />
           <DashboardVisualPolishV1 />
