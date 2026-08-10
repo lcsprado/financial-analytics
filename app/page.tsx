@@ -15,6 +15,7 @@ import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastComparativeCleanup";
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReceiptForecastReceivedRuleFix from "@/components/ReceiptForecastReceivedRuleFix";
+import ReceiptForecastWeekCardsPolishV15 from "@/components/ReceiptForecastWeekCardsPolishV15";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
 import ScopedClientFilterEnhancerV2 from "@/components/ScopedClientFilterEnhancerV2";
 
@@ -39,6 +40,7 @@ export default function Home() {
       <ReceiptForecastEnhancerV13 />
       <ReceiptForecastReceivedRuleFix />
       <ReceiptForecastComparativeCleanup />
+      <ReceiptForecastWeekCardsPolishV15 />
       <DashboardVisualPolishV1 />
     </>
   );
