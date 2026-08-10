@@ -36,6 +36,15 @@ type ActualCandidate = {
   dates: string[];
 };
 
+type RowMeta = {
+  row: HTMLTableRowElement;
+  cells: NodeListOf<HTMLTableCellElement>;
+  clientKey: string;
+  weekStart: string;
+  statusTitle: string;
+  standaloneActual: boolean;
+};
+
 function normalizeKey(value: string) {
   return value
     .normalize("NFD")
@@ -98,31 +107,48 @@ function actualWeekId(actualDate: string) {
   return toIso(monday);
 }
 
-function readPrediction(row: HTMLTableRowElement): VisiblePrediction | null {
-  if (row.style.display === "none") return null;
+function readRowMeta(row: HTMLTableRowElement): RowMeta | null {
   const cells = row.querySelectorAll<HTMLTableCellElement>("td");
   if (cells.length < 7) return null;
-
   const clientName = cells[0].querySelector("strong")?.textContent?.trim() || "";
   const clientKey = normalizeKey(clientName);
-  if (!clientKey) return null;
-
-  const statusText = cells[3].textContent || "";
+  const weekStart = brDates(cells[1].textContent || "")[0] || "";
+  if (!clientKey || !weekStart) return null;
   const statusTitle = cells[3].querySelector(".status b")?.textContent?.trim() || "";
-  if (!statusTitle.includes("Previsto")) return null;
-  if (statusTitle.includes("Adicionado manualmente") || statusTitle.includes("Confirmado")) return null;
+  const presence = cells[4].textContent?.trim() || "";
+  return {
+    row,
+    cells,
+    clientKey,
+    weekStart,
+    statusTitle,
+    standaloneActual: statusTitle.includes("Recebido") && presence.includes("Recebimento real"),
+  };
+}
+
+function readPrediction(row: HTMLTableRowElement): VisiblePrediction | null {
+  if (row.style.display === "none") return null;
+  const meta = readRowMeta(row);
+  if (!meta) return null;
+
+  const statusText = meta.cells[3].textContent || "";
+  if (!meta.statusTitle.includes("Previsto")) return null;
+  if (meta.statusTitle.includes("Adicionado manualmente") || meta.statusTitle.includes("Confirmado")) return null;
   if (row.dataset.adaptiveMatched === "true") return null;
 
-  const weekDates = brDates(cells[1].textContent || "");
-  const weekStart = weekDates[0] || "";
-  if (!weekStart) return null;
-
   const probableDates = statusText.includes("Data provável") ? brDates(statusText) : [];
-  const predictedDate = probableDates[0] || weekStart;
-  const expected = Number(row.dataset.adaptiveExpected || 0) || numericCurrency(cells[2].textContent || "");
+  const predictedDate = probableDates[0] || meta.weekStart;
+  const expected = Number(row.dataset.adaptiveExpected || 0) || numericCurrency(meta.cells[2].textContent || "");
   if (!expected) return null;
 
-  return { row, cells, clientKey, weekStart, predictedDate, expected };
+  return {
+    row,
+    cells: meta.cells,
+    clientKey: meta.clientKey,
+    weekStart: meta.weekStart,
+    predictedDate,
+    expected,
+  };
 }
 
 function buildActualCandidates(data: ImportState, monthKey: string) {
@@ -158,37 +184,40 @@ function buildActualCandidates(data: ImportState, monthKey: string) {
   return [...byClientWeek.values()];
 }
 
-function renderPartial(prediction: VisiblePrediction, actual: ActualCandidate, remaining: number) {
+function renderFutureBalance(prediction: VisiblePrediction, actual: ActualCandidate, remaining: number) {
   const actualDate = actual.dates[0];
   const predicted = parseIso(prediction.predictedDate);
   const received = parseIso(actualDate);
-  const early = Boolean(predicted && received && received < predicted);
-  const late = Boolean(predicted && received && received > predicted);
-  const title = early ? "Parcial antecipado" : late ? "Parcial com atraso" : "Parcial";
+  const outcome = predicted && received && received < predicted
+    ? "partial_early"
+    : predicted && received && received > predicted
+      ? "partial_late"
+      : "partial_on_time";
 
   prediction.row.dataset.adaptiveExpected = String(prediction.expected);
-  prediction.row.dataset.adaptiveActualValue = String(actual.total);
+  prediction.row.dataset.weeklyMatchedActualValue = String(actual.total);
+  prediction.row.dataset.adaptiveActualValue = "0";
   prediction.row.dataset.adaptiveRemaining = String(remaining);
   prediction.row.dataset.adaptiveActualDates = actual.dates.join(",");
   prediction.row.dataset.adaptiveActualWeek = actual.weekId;
   prediction.row.dataset.adaptivePredictedDate = prediction.predictedDate;
-  prediction.row.dataset.adaptiveOutcome = early ? "partial_early" : late ? "partial_late" : "partial_on_time";
+  prediction.row.dataset.adaptiveOutcome = outcome;
   prediction.row.dataset.adaptiveMatched = "true";
   prediction.row.dataset.crossWeekFilterFix = actual.key;
+  prediction.row.dataset.weeklyTruthApplied = "partial";
+  prediction.row.style.display = "";
 
   const value = prediction.cells[2].querySelector("strong");
   if (value) value.textContent = currency.format(remaining);
 
   prediction.cells[3].innerHTML = "";
   const wrapper = document.createElement("span");
-  wrapper.className = "status partial";
+  wrapper.className = "status forecast";
   const bold = document.createElement("b");
-  bold.textContent = title;
+  bold.textContent = "Previsto";
   const detail = document.createElement("small");
-  detail.textContent = `${currency.format(actual.total)} em ${actual.dates.map((date) => parseIso(date)?.toLocaleDateString("pt-BR") || date).join(", ")}`;
-  const rest = document.createElement("small");
-  rest.textContent = `Ainda previsto: ${currency.format(remaining)}`;
-  wrapper.append(bold, detail, rest);
+  detail.textContent = "Saldo previsto após recebimento em outra semana";
+  wrapper.append(bold, detail);
   prediction.cells[3].append(wrapper);
 }
 
@@ -211,9 +240,61 @@ function consumeFullCrossWeekPayment(prediction: VisiblePrediction, actual: Actu
   prediction.row.dataset.adaptiveOutcome = outcome;
   prediction.row.dataset.adaptiveMatched = "true";
   prediction.row.dataset.crossWeekFilterFix = actual.key;
+  prediction.row.dataset.weeklyTruthApplied = "full";
 
-  // O recebimento pertence à semana real. Ao filtrar outra semana, a previsão já consumida não deve reaparecer.
+  // O valor já está realizado na semana em que entrou. Não o replica na semana prevista.
   prediction.row.style.display = "none";
+}
+
+function normalizeAdaptiveCrossWeekRows() {
+  const metas = [...document.querySelectorAll<HTMLTableRowElement>(".forecast-table-v13 tbody tr")]
+    .map(readRowMeta)
+    .filter((row): row is RowMeta => Boolean(row));
+
+  let changed = false;
+
+  metas.forEach((meta) => {
+    const actualWeek = meta.row.dataset.adaptiveActualWeek || "";
+    if (meta.row.dataset.adaptiveMatched !== "true" || !actualWeek || actualWeek === meta.weekStart) return;
+    if (meta.row.dataset.weeklyTruthApplied) return;
+
+    const actualRow = metas.find((candidate) =>
+      candidate.standaloneActual
+      && candidate.clientKey === meta.clientKey
+      && candidate.weekStart === actualWeek,
+    );
+
+    if (actualRow && actualRow.row.style.display === "none") {
+      actualRow.row.style.display = "";
+      changed = true;
+    }
+
+    const expected = Number(meta.row.dataset.adaptiveExpected || 0) || numericCurrency(meta.cells[2].textContent || "");
+    const remaining = Number(meta.row.dataset.adaptiveRemaining || "NaN");
+    const tolerance = Math.max(1000, expected * PAID_TOLERANCE_RATIO);
+
+    if (Number.isFinite(remaining) && remaining <= tolerance) {
+      meta.row.style.display = "none";
+      meta.row.dataset.weeklyTruthApplied = "full";
+      changed = true;
+      return;
+    }
+
+    if (!Number.isFinite(remaining) || remaining <= 0) return;
+
+    const actualValue = Number(meta.row.dataset.adaptiveActualValue || 0);
+    if (actualValue > 0) meta.row.dataset.weeklyMatchedActualValue = String(actualValue);
+    meta.row.dataset.adaptiveActualValue = "0";
+    meta.row.dataset.weeklyTruthApplied = "partial";
+    meta.row.style.display = "";
+
+    const value = meta.cells[2].querySelector("strong");
+    if (value) value.textContent = currency.format(remaining);
+    meta.cells[3].innerHTML = '<span class="status forecast"><b>Previsto</b><small>Saldo previsto após recebimento em outra semana</small></span>';
+    changed = true;
+  });
+
+  return changed;
 }
 
 function refreshVisibleRowCount() {
@@ -226,18 +307,34 @@ function refreshVisibleRowCount() {
 
 function applyCrossWeekFilterFix(data: ImportState) {
   if (!document.body.classList.contains("receipt-forecast-active-v13")) return;
+
+  let changed = normalizeAdaptiveCrossWeekRows();
+
   const monthKey = currentMonthKey();
   const weekFilter = currentWeekFilter();
-  if (!/^\d{4}-\d{2}$/.test(monthKey) || !weekFilter || weekFilter === "all") return;
+  if (!/^\d{4}-\d{2}$/.test(monthKey) || !weekFilter) {
+    if (changed) refreshVisibleRowCount();
+    return;
+  }
+
+  // Em "Todas as semanas", o motor adaptativo já faz o pareamento. Aqui apenas devolvemos
+  // cada recebimento à semana real e removemos a duplicidade da semana prevista.
+  if (weekFilter === "all") {
+    if (changed) refreshVisibleRowCount();
+    return;
+  }
 
   const predictions = [...document.querySelectorAll<HTMLTableRowElement>(".forecast-table-v13 tbody tr")]
     .map(readPrediction)
     .filter((row): row is VisiblePrediction => Boolean(row));
-  if (!predictions.length) return;
+
+  if (!predictions.length) {
+    if (changed) refreshVisibleRowCount();
+    return;
+  }
 
   const actuals = buildActualCandidates(data, monthKey);
   const used = new Set<string>();
-  let changed = false;
 
   predictions.forEach((prediction) => {
     const predictedDate = parseIso(prediction.predictedDate);
@@ -264,7 +361,7 @@ function applyCrossWeekFilterFix(data: ImportState) {
     const tolerance = Math.max(1000, prediction.expected * PAID_TOLERANCE_RATIO);
     const remaining = Math.max(0, prediction.expected - best.total);
     if (remaining <= tolerance) consumeFullCrossWeekPayment(prediction, best);
-    else renderPartial(prediction, best, remaining);
+    else renderFutureBalance(prediction, best, remaining);
     changed = true;
   });
 
@@ -275,6 +372,7 @@ export default function ReceiptForecastCrossWeekFilterFix() {
   const [data, setData] = useState<ImportState>(EMPTY_STATE);
   const scheduled = useRef<number | null>(null);
   const secondFrame = useRef<number | null>(null);
+  const lateTimer = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -288,7 +386,7 @@ export default function ReceiptForecastCrossWeekFilterFix() {
         if (!active || !stored) return;
         setData(normalizeReceiptClientIdentities(stored, links).data);
       } catch {
-        // Mantém a previsão funcional mesmo se o cadastro de vínculos estiver temporariamente indisponível.
+        // Mantém a previsão funcional mesmo se os vínculos estiverem temporariamente indisponíveis.
       }
     };
 
@@ -323,15 +421,25 @@ export default function ReceiptForecastCrossWeekFilterFix() {
       });
     };
 
-    schedule();
-    document.addEventListener("change", schedule, true);
-    document.addEventListener("click", schedule, true);
+    const scheduleLate = () => {
+      schedule();
+      if (lateTimer.current !== null) window.clearTimeout(lateTimer.current);
+      lateTimer.current = window.setTimeout(() => {
+        lateTimer.current = null;
+        schedule();
+      }, 120);
+    };
+
+    scheduleLate();
+    document.addEventListener("change", scheduleLate, true);
+    document.addEventListener("click", scheduleLate, true);
 
     return () => {
-      document.removeEventListener("change", schedule, true);
-      document.removeEventListener("click", schedule, true);
+      document.removeEventListener("change", scheduleLate, true);
+      document.removeEventListener("click", scheduleLate, true);
       if (scheduled.current !== null) window.cancelAnimationFrame(scheduled.current);
       if (secondFrame.current !== null) window.cancelAnimationFrame(secondFrame.current);
+      if (lateTimer.current !== null) window.clearTimeout(lateTimer.current);
     };
   }, [data]);
 
