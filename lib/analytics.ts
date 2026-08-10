@@ -4,6 +4,7 @@ import {
   canonicalClientName,
   clientKey,
   likelySameClientName,
+  normalizeClientText,
   sameClientName,
 } from "./clientNames";
 import { canonicalReceiptClientName, sameReceiptClientName } from "./receiptClientNames";
@@ -13,6 +14,27 @@ import {
   normalizeInvoiceClientCode,
   normalizeInvoiceClientsByCode,
 } from "./invoiceClients";
+
+type ReceiptAliasLink = {
+  alias_key: string;
+  canonical_name: string;
+};
+
+let receiptAliasMap = new Map<string, string>();
+
+export function setReceiptClientAliasLinks(links: ReceiptAliasLink[]) {
+  receiptAliasMap = new Map(
+    links
+      .filter((link) => link.alias_key && link.canonical_name)
+      .map((link) => [normalizeClientText(link.alias_key), link.canonical_name] as const),
+  );
+}
+
+function resolveReceiptClientName(value: string) {
+  const canonical = canonicalReceiptClientName(value);
+  if (!canonical) return "";
+  return receiptAliasMap.get(normalizeClientText(canonical)) || canonical;
+}
 
 function inPeriod(dateValue: string, filter: PeriodFilter) {
   const date = new Date(`${dateValue}T12:00:00`);
@@ -61,7 +83,12 @@ function matchesPreparedInvoiceSelection(
 
 function matchesReceiptSelection(selection: string, candidate: string) {
   const clients = splitClientSelection(selection);
-  return !clients.length || clients.some((client) => sameReceiptClientName(client, candidate));
+  if (!clients.length) return true;
+
+  const resolvedCandidate = resolveReceiptClientName(candidate);
+  return clients.some((client) =>
+    sameReceiptClientName(resolveReceiptClientName(client), resolvedCandidate),
+  );
 }
 
 function isDemoInvoice(invoice: Invoice) {
