@@ -6,6 +6,11 @@ import {
   type ReceiptIdentityStats,
 } from "@/lib/receiptClientIdentity";
 import {
+  listReceiptClientLinks,
+  RECEIPT_CLIENT_LINKS_EVENT,
+  type ReceiptClientLink,
+} from "@/lib/receiptClientLinks";
+import {
   ANALYSIS_DATA_EVENT,
   loadAnalysisState,
   OFFLINE_DATA_CLEARED_EVENT,
@@ -18,19 +23,23 @@ const EMPTY_STATS: ReceiptIdentityStats = {
   exactMasterMatches: 0,
   fuzzyMasterMatches: 0,
   ambiguousMatches: 0,
+  manualMatches: 0,
 };
 
 export default function ReceiptClientIdentityNormalizer() {
   const [stats, setStats] = useState<ReceiptIdentityStats>(EMPTY_STATS);
   const dispatching = useRef(false);
   const latestStats = useRef<ReceiptIdentityStats>(EMPTY_STATS);
+  const linksRef = useRef<ReceiptClientLink[]>([]);
+  const dataRef = useRef<ImportState | null>(null);
 
   useEffect(() => {
     let active = true;
 
     const process = (data: ImportState) => {
       if (!data?.receipts) return;
-      const result = normalizeReceiptClientIdentities(data);
+      dataRef.current = data;
+      const result = normalizeReceiptClientIdentities(data, linksRef.current);
       latestStats.current = result.stats;
       setStats(result.stats);
 
@@ -44,24 +53,39 @@ export default function ReceiptClientIdentityNormalizer() {
       }, 0);
     };
 
-    void loadAnalysisState().then((stored) => {
+    const reloadLinks = async () => {
+      try {
+        linksRef.current = await listReceiptClientLinks();
+        if (dataRef.current) process(dataRef.current);
+      } catch {
+        linksRef.current = [];
+      }
+    };
+
+    void (async () => {
+      await reloadLinks();
+      const stored = await loadAnalysisState();
       if (active && stored) process(stored);
-    });
+    })();
 
     const onData = (event: Event) => {
       const detail = (event as CustomEvent<ImportState>).detail;
       if (detail) process(detail);
     };
+    const onLinks = () => { void reloadLinks(); };
     const onClear = () => {
+      dataRef.current = null;
       latestStats.current = EMPTY_STATS;
       setStats(EMPTY_STATS);
     };
 
     window.addEventListener(ANALYSIS_DATA_EVENT, onData);
+    window.addEventListener(RECEIPT_CLIENT_LINKS_EVENT, onLinks);
     window.addEventListener(OFFLINE_DATA_CLEARED_EVENT, onClear);
     return () => {
       active = false;
       window.removeEventListener(ANALYSIS_DATA_EVENT, onData);
+      window.removeEventListener(RECEIPT_CLIENT_LINKS_EVENT, onLinks);
       window.removeEventListener(OFFLINE_DATA_CLEARED_EVENT, onClear);
     };
   }, []);
@@ -83,16 +107,17 @@ export default function ReceiptClientIdentityNormalizer() {
 
       const rowCount = panel.querySelectorAll(".forecast-table-v13 tbody tr:not([style*='display: none'])").length;
       const currentStats = latestStats.current;
+      const manualText = currentStats.manualMatches ? ` · ${currentStats.manualMatches} recebimentos por vínculo manual` : "";
       const subtitleText = currentStats.aliasGroups
-        ? `${rowCount} registros · ${currentStats.aliasGroups} grupos de nomes unificados automaticamente`
-        : `${rowCount} registros · identidade de clientes padronizada`;
+        ? `${rowCount} registros · ${currentStats.aliasGroups} grupos automáticos${manualText}`
+        : `${rowCount} registros · identidade de clientes padronizada${manualText}`;
       if (subtitle && subtitle.textContent !== subtitleText) subtitle.textContent = subtitleText;
 
       if (head && !head.querySelector(".client-identity-v16-badge")) {
         const badge = document.createElement("span");
         badge.className = "client-identity-v16-badge";
         badge.textContent = "NOMES CONSOLIDADOS";
-        badge.title = "O sistema compara nomes sem depender de acentos, vírgulas, traços ou da ordem das palavras. Correspondências aproximadas só entram quando a confiança é alta.";
+        badge.title = "Vínculos manuais têm prioridade. Depois o sistema aplica a normalização automática segura.";
         head.appendChild(badge);
       }
     };
