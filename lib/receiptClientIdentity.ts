@@ -90,11 +90,10 @@ function rawReceiptName(description: string, hint: string) {
 export function normalizeReceiptClientIdentities(data: ImportState, links: ReceiptClientLink[] = []) {
   const references = buildMasterReferences(data);
   const manualByAlias = new Map(links.map((link) => [link.alias_key, link.canonical_name] as const));
-  const parsed = (data.receipts ?? []).map((receipt) => ({
-    receipt,
-    name: canonicalReceiptClientName(receipt.clientHint || receipt.description),
-    rawName: rawReceiptName(receipt.description, receipt.clientHint),
-  }));
+  const parsed = (data.receipts ?? []).map((receipt) => {
+    const rawName = rawReceiptName(receipt.description, receipt.clientHint);
+    return { receipt, name: rawName, rawName };
+  });
 
   const receiptGroups = new Map<string, string[]>();
   parsed.forEach(({ name }) => {
