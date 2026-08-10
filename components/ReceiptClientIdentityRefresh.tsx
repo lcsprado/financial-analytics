@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { setReceiptClientAliasLinks } from "@/lib/analytics";
 import { normalizeReceiptClientIdentities } from "@/lib/receiptClientIdentity";
 import {
   listReceiptClientLinks,
@@ -11,6 +12,12 @@ import {
   loadAnalysisState,
 } from "@/lib/offlineStorage";
 import type { ImportState } from "@/lib/types";
+
+function refreshCurrentClientFilter() {
+  const select = document.querySelector<HTMLSelectElement>(".client-filter select");
+  if (!select?.value) return;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+}
 
 export default function ReceiptClientIdentityRefresh() {
   useEffect(() => {
@@ -24,7 +31,13 @@ export default function ReceiptClientIdentityRefresh() {
           loadAnalysisState(),
         ]);
 
-        if (!active || !stored) return;
+        if (!active) return;
+
+        setReceiptClientAliasLinks(links);
+        if (!stored) {
+          refreshCurrentClientFilter();
+          return;
+        }
 
         const result = normalizeReceiptClientIdentities(stored, links);
 
@@ -35,6 +48,7 @@ export default function ReceiptClientIdentityRefresh() {
           window.dispatchEvent(new CustomEvent<ImportState>(ANALYSIS_DATA_EVENT, {
             detail: result.data,
           }));
+          refreshCurrentClientFilter();
         });
       } catch {
         // O dashboard continua usando a base importada mesmo se o vínculo não puder ser recarregado.
