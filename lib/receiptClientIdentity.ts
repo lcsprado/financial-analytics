@@ -53,23 +53,23 @@ function bestMasterMatch(candidate: string, references: Reference[]) {
   const exact = references.find((reference) => reference.key === key);
   if (exact) return { name: exact.name, kind: "exact" as const };
 
-  let best: Reference | null = null;
+  let bestName = "";
   let bestScore = 0;
   let secondScore = 0;
 
-  references.forEach((reference) => {
+  for (const reference of references) {
     const score = clientIdentitySimilarity(candidate, reference.name);
     if (score > bestScore) {
       secondScore = bestScore;
       bestScore = score;
-      best = reference;
+      bestName = reference.name;
     } else if (score > secondScore) {
       secondScore = score;
     }
-  });
+  }
 
-  if (best && bestScore >= 0.9 && (secondScore < 0.82 || bestScore - secondScore >= 0.06)) {
-    return { name: best.name, kind: "fuzzy" as const };
+  if (bestName && bestScore >= 0.9 && (secondScore < 0.82 || bestScore - secondScore >= 0.06)) {
+    return { name: bestName, kind: "fuzzy" as const };
   }
 
   if (bestScore >= 0.82) return { name: "", kind: "ambiguous" as const };
