@@ -105,6 +105,7 @@ export default function PerformanceScopedEnhancers() {
 
       {scope === "overview" ? (
         <>
+          <ReceiptClientIdentityRefresh />
           <DashboardKpiCleanup />
           <DashboardVisualControls />
           <MonthlyVariationEnhancer />
