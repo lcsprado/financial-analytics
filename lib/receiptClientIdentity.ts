@@ -6,6 +6,7 @@ import {
 } from "./clientIdentity";
 import { normalizeInvoiceClientsByCode } from "./invoiceClients";
 import { canonicalReceiptClientName } from "./receiptClientNames";
+import { receiptAliasKey, type ReceiptClientLink } from "./receiptClientLinks";
 import type { ImportState } from "./types";
 
 export type ReceiptIdentityStats = {
@@ -14,6 +15,7 @@ export type ReceiptIdentityStats = {
   exactMasterMatches: number;
   fuzzyMasterMatches: number;
   ambiguousMatches: number;
+  manualMatches: number;
 };
 
 type Reference = {
@@ -76,17 +78,22 @@ function bestMasterMatch(candidate: string, references: Reference[]) {
   return { name: "", kind: "none" as const };
 }
 
+function rawReceiptName(description: string, hint: string) {
+  return canonicalReceiptClientName(description) || canonicalReceiptClientName(hint);
+}
+
 /**
  * Padroniza clientHint antes das análises de recebimentos/previsão.
- * A identidade ignora pontuação, acentos e ordem das palavras; quando existe
- * uma referência segura na FINR020/Contas a Receber, o nome oficial da base é
- * usado como rótulo. Casos fuzzy só são aceitos com margem alta e sem empate.
+ * Vínculos manuais são a regra de maior prioridade e usam o nome encontrado
+ * na própria planilha de recebimentos. Depois vêm as correspondências automáticas.
  */
-export function normalizeReceiptClientIdentities(data: ImportState) {
+export function normalizeReceiptClientIdentities(data: ImportState, links: ReceiptClientLink[] = []) {
   const references = buildMasterReferences(data);
+  const manualByAlias = new Map(links.map((link) => [link.alias_key, link.canonical_name] as const));
   const parsed = (data.receipts ?? []).map((receipt) => ({
     receipt,
     name: canonicalReceiptClientName(receipt.clientHint || receipt.description),
+    rawName: rawReceiptName(receipt.description, receipt.clientHint),
   }));
 
   const receiptGroups = new Map<string, string[]>();
@@ -111,16 +118,25 @@ export function normalizeReceiptClientIdentities(data: ImportState) {
   let exactMasterMatches = 0;
   let fuzzyMasterMatches = 0;
   let ambiguousMatches = 0;
+  let manualMatches = 0;
 
-  const receipts = parsed.map(({ receipt, name }) => {
+  const receipts = parsed.map(({ receipt, name, rawName }) => {
     if (!name) return receipt;
-    const key = clientIdentityKey(name);
-    const match = bestMasterMatch(name, references);
-    if (match.kind === "exact") exactMasterMatches += 1;
-    if (match.kind === "fuzzy") fuzzyMasterMatches += 1;
-    if (match.kind === "ambiguous") ambiguousMatches += 1;
 
-    const target = match.name || receiptPreferred.get(key) || name;
+    const manualTarget = manualByAlias.get(receiptAliasKey(rawName));
+    let target = manualTarget || "";
+
+    if (manualTarget) {
+      manualMatches += 1;
+    } else {
+      const key = clientIdentityKey(name);
+      const match = bestMasterMatch(name, references);
+      if (match.kind === "exact") exactMasterMatches += 1;
+      if (match.kind === "fuzzy") fuzzyMasterMatches += 1;
+      if (match.kind === "ambiguous") ambiguousMatches += 1;
+      target = match.name || receiptPreferred.get(key) || name;
+    }
+
     const current = canonicalReceiptClientName(receipt.clientHint || receipt.description);
     if (!target || normalizeClientText(current) === normalizeClientText(target)) return receipt;
 
@@ -137,6 +153,7 @@ export function normalizeReceiptClientIdentities(data: ImportState) {
       exactMasterMatches,
       fuzzyMasterMatches,
       ambiguousMatches,
+      manualMatches,
     } satisfies ReceiptIdentityStats,
   };
 }
