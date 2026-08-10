@@ -119,16 +119,14 @@ export default function ReceiptClientIdentityNormalizer() {
       const rowCount = panel.querySelectorAll(".forecast-table-v13 tbody tr:not([style*='display: none'])").length;
       const currentStats = latestStats.current;
       const manualText = currentStats.manualMatches ? ` · ${currentStats.manualMatches} recebimentos por vínculo manual` : "";
-      const subtitleText = currentStats.aliasGroups
-        ? `${rowCount} registros · ${currentStats.aliasGroups} grupos automáticos${manualText}`
-        : `${rowCount} registros · identidade de clientes padronizada${manualText}`;
+      const subtitleText = `${rowCount} registros · vínculos manuais${manualText}`;
       if (subtitle && subtitle.textContent !== subtitleText) subtitle.textContent = subtitleText;
 
       if (head && !head.querySelector(".client-identity-v16-badge")) {
         const badge = document.createElement("span");
         badge.className = "client-identity-v16-badge";
-        badge.textContent = "NOMES CONSOLIDADOS";
-        badge.title = "Vínculos manuais têm prioridade. Depois o sistema aplica a normalização automática segura.";
+        badge.textContent = "VÍNCULOS MANUAIS";
+        badge.title = "O sistema não tenta mais adivinhar clientes semelhantes. Os vínculos cadastrados por você têm prioridade.";
         head.appendChild(badge);
       }
     };
@@ -136,13 +134,11 @@ export default function ReceiptClientIdentityNormalizer() {
     const scheduleSync = () => window.setTimeout(sync, 0);
     sync();
     document.addEventListener("click", scheduleSync, true);
-    document.addEventListener("change", scheduleSync, true);
-    const timer = window.setInterval(sync, 1400);
+    window.addEventListener(ANALYSIS_DATA_EVENT, scheduleSync);
 
     return () => {
       document.removeEventListener("click", scheduleSync, true);
-      document.removeEventListener("change", scheduleSync, true);
-      window.clearInterval(timer);
+      window.removeEventListener(ANALYSIS_DATA_EVENT, scheduleSync);
     };
   }, [stats]);
 
