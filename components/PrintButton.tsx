@@ -1,12 +1,18 @@
 "use client";
 
 import { Printer } from "lucide-react";
-import { useRef } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 
 export default function PrintButton() {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const filtersRef = useRef<HTMLParagraphElement>(null);
   const generatedAtRef = useRef<HTMLParagraphElement>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalTarget(document.querySelector<HTMLElement>(".topbar-actions"));
+  }, []);
 
   function handlePrint() {
     const currentTitle = document.querySelector(".topbar-title h1")?.textContent?.trim() || "Painel financeiro";
@@ -41,6 +47,19 @@ export default function PrintButton() {
     }
   }
 
+  const printButton = (
+    <button
+      type="button"
+      className="print-button-floating ghost-button compact"
+      onClick={handlePrint}
+      aria-label="Imprimir aba atual"
+      title="Imprimir aba atual"
+    >
+      <Printer size={17} />
+      <span>Imprimir</span>
+    </button>
+  );
+
   return (
     <>
       <section className="print-report-header" aria-hidden="true">
@@ -52,51 +71,24 @@ export default function PrintButton() {
         <p ref={generatedAtRef} />
       </section>
 
-      <button
-        type="button"
-        className="print-button-floating ghost-button compact"
-        onClick={handlePrint}
-        aria-label="Imprimir aba atual"
-        title="Imprimir aba atual"
-      >
-        <Printer size={17} />
-        <span>Imprimir</span>
-      </button>
+      {portalTarget ? createPortal(printButton, portalTarget) : null}
 
       <style jsx global>{`
         .print-report-header {
           display: none;
         }
 
-        .print-button-floating {
-          position: fixed;
-          top: 22px;
-          right: 220px;
-          z-index: 35;
+        .topbar-actions .print-button-floating {
+          position: static;
+          flex: 0 0 auto;
+          z-index: auto;
           background: #ffffff;
-          box-shadow: 0 5px 16px rgba(28, 35, 60, 0.08);
+          box-shadow: none;
         }
 
         @media (max-width: 980px) {
-          .print-button-floating {
-            right: 78px;
-          }
-
-          .print-button-floating span {
+          .topbar-actions .print-button-floating span {
             display: none;
-          }
-        }
-
-        @media (max-width: 580px) {
-          .print-button-floating {
-            top: auto;
-            right: 16px;
-            bottom: 16px;
-            width: 46px;
-            height: 46px;
-            padding: 0;
-            border-radius: 50%;
-            box-shadow: 0 10px 28px rgba(28, 35, 60, 0.2);
           }
         }
 
