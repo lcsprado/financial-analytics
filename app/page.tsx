@@ -2,6 +2,7 @@ import ClientFilterInteractionFix from "@/components/ClientFilterInteractionFix"
 import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
 import DashboardKpiCleanup from "@/components/DashboardKpiCleanup";
 import DashboardVisualControls from "@/components/DashboardVisualControls";
+import DashboardVisualPolishV1 from "@/components/DashboardVisualPolishV1";
 import FinancialDashboard from "@/components/FinancialDashboard";
 import InvoiceAnalyticsEnhancer from "@/components/InvoiceAnalyticsEnhancer";
 import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalizer";
@@ -36,6 +37,7 @@ export default function Home() {
       <ReceiptDateRangeFilter />
       <ReceiptForecastEnhancerV13 />
       <ReceiptForecastReceivedRuleFix />
+      <DashboardVisualPolishV1 />
     </>
   );
 }
