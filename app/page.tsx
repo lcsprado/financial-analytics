@@ -14,7 +14,7 @@ import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReceiptForecastReceivedRuleFix from "@/components/ReceiptForecastReceivedRuleFix";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
-import ScopedClientFilterEnhancer from "@/components/ScopedClientFilterEnhancer";
+import ScopedClientFilterEnhancerV2 from "@/components/ScopedClientFilterEnhancerV2";
 
 export default function Home() {
   return (
@@ -25,7 +25,7 @@ export default function Home() {
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
       <InvoiceClientCodeNormalizer />
-      <ScopedClientFilterEnhancer />
+      <ScopedClientFilterEnhancerV2 />
       <ClientFilterInteractionFix />
       <DashboardKpiCleanup />
       <DashboardVisualControls />
