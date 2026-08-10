@@ -11,6 +11,7 @@ import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
 import PrintButton from "@/components/PrintButton";
 import ReceiptClientIdentityNormalizer from "@/components/ReceiptClientIdentityNormalizer";
+import ReceiptClientLinkManager from "@/components/ReceiptClientLinkManager";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastComparativeCleanup";
@@ -30,6 +31,7 @@ export default function Home() {
       <ClientFilterSearchEnhancer />
       <InvoiceClientCodeNormalizer />
       <ReceiptClientIdentityNormalizer />
+      <ReceiptClientLinkManager />
       <ScopedClientFilterEnhancerV2 />
       <ClientFilterInteractionFix />
       <DashboardKpiCleanup />
