@@ -12,6 +12,7 @@ import ReceiptClientIdentityRefresh from "@/components/ReceiptClientIdentityRefr
 import ReceiptClientLinkManager from "@/components/ReceiptClientLinkManager";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
+import ReceiptForecastAnyReceiptCompletesPredictionV23 from "@/components/ReceiptForecastAnyReceiptCompletesPredictionV23";
 import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastComparativeCleanup";
 import ReceiptForecastCrossWeekFilterFix from "@/components/ReceiptForecastCrossWeekFilterFix";
 import ReceiptForecastExecutivePrintPolishV17 from "@/components/ReceiptForecastExecutivePrintPolishV17";
@@ -142,6 +143,7 @@ export default function PerformanceScopedEnhancers() {
         <>
           <ReceiptForecastReceivedRuleFix />
           <ReceiptForecastCrossWeekFilterFix />
+          <ReceiptForecastAnyReceiptCompletesPredictionV23 />
           <ReceiptForecastOnlyPendingToggle />
           <ReceiptForecastExecutivePrintPolishV17 />
           <ReceiptForecastPrintRefinementV18 />
