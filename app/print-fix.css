@@ -1,0 +1,66 @@
+@media print {
+  /*
+   * O estilo global de impressão mantém cards curtos inteiros na página.
+   * Em painéis com tabelas longas isso empurrava o painel completo para a
+   * página seguinte, deixando a primeira página praticamente vazia.
+   */
+  body {
+    padding-bottom: 0 !important;
+  }
+
+  .print-report-header {
+    break-after: avoid-page !important;
+    page-break-after: avoid !important;
+  }
+
+  .panel:has(.table-wrap) {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    padding: 10px !important;
+  }
+
+  .panel:has(.table-wrap) .panel-header,
+  .panel:has(.table-wrap) .table-toolbar {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: avoid-page !important;
+    page-break-after: avoid !important;
+  }
+
+  .panel:has(.table-wrap) .panel-header {
+    margin-bottom: 6px !important;
+  }
+
+  .panel:has(.table-wrap) .table-toolbar {
+    margin-bottom: 6px !important;
+  }
+
+  .panel:has(.table-wrap) .table-wrap,
+  .panel:has(.table-wrap) table,
+  .panel:has(.table-wrap) tbody {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .panel:has(.table-wrap) table {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+  }
+
+  .panel:has(.table-wrap) thead {
+    display: table-header-group !important;
+  }
+
+  .panel:has(.table-wrap) tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .panel:has(.table-wrap) th,
+  .panel:has(.table-wrap) td {
+    padding: 4px 6px !important;
+    font-size: 7.6px !important;
+    line-height: 1.2 !important;
+  }
+}
