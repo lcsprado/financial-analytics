@@ -8,7 +8,9 @@ export default function ReceiptForecastKpiSimplifier() {
       }
 
       .receipt-forecast-active-v13 .forecast-kpis-v13 article:nth-child(3),
-      .receipt-forecast-active-v13 .forecast-kpis-v13 article:nth-child(4) {
+      .receipt-forecast-active-v13 .forecast-kpis-v13 article:nth-child(4),
+      .receipt-forecast-active-v13 #forecast-accuracy-v14,
+      .receipt-forecast-active-v13 .forecast-accuracy-v14 {
         display: none !important;
       }
 
