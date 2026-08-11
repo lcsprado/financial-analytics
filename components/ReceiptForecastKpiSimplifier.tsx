@@ -8,9 +8,16 @@ const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 type Snapshot = {
   pending: number;
   received: number;
-  pendingActive: boolean;
-  receivedActive: boolean;
 };
+
+function normalize(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
 
 function parseCurrency(value: string) {
   const match = value.match(/R\$\s*-?[\d.]+,\d{2}/i);
@@ -19,21 +26,24 @@ function parseCurrency(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function dateFromWeekLabel(value: string) {
+  const match = value.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+}
+
+function selectedWeekValue() {
+  const label = [...document.querySelectorAll<HTMLLabelElement>(".forecast-filter-v13 label")]
+    .find((item) => normalize(item.querySelector(":scope > span")?.textContent || "") === "SEMANA");
+  return label?.querySelector<HTMLSelectElement>("select")?.value || "all";
+}
+
 function sameSnapshot(left: Snapshot, right: Snapshot) {
-  return left.pending === right.pending
-    && left.received === right.received
-    && left.pendingActive === right.pendingActive
-    && left.receivedActive === right.receivedActive;
+  return left.pending === right.pending && left.received === right.received;
 }
 
 export default function ReceiptForecastKpiSimplifier() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
-  const [snapshot, setSnapshot] = useState<Snapshot>({
-    pending: 0,
-    received: 0,
-    pendingActive: true,
-    receivedActive: false,
-  });
+  const [snapshot, setSnapshot] = useState<Snapshot>({ pending: 0, received: 0 });
   const frame = useRef<number | null>(null);
 
   useEffect(() => {
@@ -42,26 +52,32 @@ export default function ReceiptForecastKpiSimplifier() {
       if (container && container !== target) setTarget(container);
       if (!container) return;
 
-      const baseCards = [...container.querySelectorAll<HTMLElement>(":scope > article")];
-      const pendingCard = baseCards[0];
-      const receivedCard = baseCards[1];
-      if (!pendingCard || !receivedCard) return;
+      const weekFilter = selectedWeekValue();
+      const weekButtons = [...document.querySelectorAll<HTMLButtonElement>(".forecast-weeks-v13 button")];
 
-      const storedBase = Number(pendingCard.dataset.fullWeekBaseValueV25 || "NaN");
-      const basePending = Number.isFinite(storedBase)
-        ? storedBase
-        : parseCurrency(pendingCard.querySelector<HTMLElement>("strong")?.textContent || "");
+      let pending = 0;
+      let received = 0;
 
-      const spillover = [...document.querySelectorAll<HTMLTableRowElement>("tr[data-full-week-spillover-v25='true']")]
-        .reduce((sum, row) => sum + parseCurrency(row.querySelector<HTMLElement>("td.number strong")?.textContent || ""), 0);
+      if (weekButtons.length) {
+        const scopedWeeks = weekFilter === "all"
+          ? weekButtons
+          : weekButtons.filter((button) => dateFromWeekLabel(button.querySelector("span")?.textContent || "") === weekFilter);
 
-      const next: Snapshot = {
-        pending: basePending + spillover,
-        received: parseCurrency(receivedCard.querySelector<HTMLElement>("strong")?.textContent || ""),
-        pendingActive: pendingCard.classList.contains("active"),
-        receivedActive: receivedCard.classList.contains("active"),
-      };
+        pending = scopedWeeks.reduce(
+          (sum, button) => sum + parseCurrency(button.querySelector<HTMLElement>("strong")?.textContent || ""),
+          0,
+        );
+        received = scopedWeeks.reduce(
+          (sum, button) => sum + parseCurrency(button.querySelector<HTMLElement>("em")?.textContent || ""),
+          0,
+        );
+      } else {
+        const baseCards = [...container.querySelectorAll<HTMLElement>(":scope > article")];
+        pending = parseCurrency(baseCards[0]?.querySelector<HTMLElement>("strong")?.textContent || "");
+        received = parseCurrency(baseCards[1]?.querySelector<HTMLElement>("strong")?.textContent || "");
+      }
 
+      const next = { pending, received };
       setSnapshot((current) => sameSnapshot(current, next) ? current : next);
     };
 
@@ -88,12 +104,6 @@ export default function ReceiptForecastKpiSimplifier() {
     };
   }, [target]);
 
-  const clickBaseCard = (index: number) => {
-    const container = document.querySelector<HTMLElement>(".forecast-kpis-v13");
-    const cards = container ? [...container.querySelectorAll<HTMLElement>(":scope > article")] : [];
-    cards[index]?.click();
-  };
-
   return (
     <>
       <style jsx global>{`
@@ -115,7 +125,7 @@ export default function ReceiptForecastKpiSimplifier() {
 
         .receipt-forecast-active-v13 .forecast-kpis-stable-v26 article {
           min-width: 0;
-          cursor: pointer;
+          cursor: default;
         }
 
         .receipt-forecast-active-v13 #forecast-accuracy-v14,
@@ -132,12 +142,12 @@ export default function ReceiptForecastKpiSimplifier() {
 
       {target ? createPortal(
         <div className="forecast-kpis-stable-v26">
-          <article className={snapshot.pendingActive ? "active" : ""} onClick={() => clickBaseCard(0)}>
+          <article>
             <span>A receber no período</span>
             <strong>{BRL.format(snapshot.pending)}</strong>
             <small>Previsão consolidada do período selecionado</small>
           </article>
-          <article className={snapshot.receivedActive ? "active" : ""} onClick={() => clickBaseCard(1)}>
+          <article>
             <span>Recebido no período</span>
             <strong>{BRL.format(snapshot.received)}</strong>
             <small>Recebimentos reais do período selecionado</small>
