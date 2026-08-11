@@ -19,6 +19,7 @@ import ReceiptForecastExecutivePrintPolishV17 from "@/components/ReceiptForecast
 import ReceiptForecastFilterLayoutFixV22 from "@/components/ReceiptForecastFilterLayoutFixV22";
 import ReceiptForecastFullWeekSpilloverV25 from "@/components/ReceiptForecastFullWeekSpilloverV25";
 import ReceiptForecastHideWeeksPanelV21 from "@/components/ReceiptForecastHideWeeksPanelV21";
+import ReceiptForecastKpiSimplifier from "@/components/ReceiptForecastKpiSimplifier";
 import ReceiptForecastLogoPrintFixV20 from "@/components/ReceiptForecastLogoPrintFixV20";
 import ReceiptForecastOnlyPendingToggle from "@/components/ReceiptForecastOnlyPendingToggle";
 import ReceiptForecastPrintFinalV19 from "@/components/ReceiptForecastPrintFinalV19";
@@ -146,6 +147,7 @@ export default function PerformanceScopedEnhancers() {
           <ReceiptForecastCrossWeekFilterFix />
           <ReceiptForecastAnyReceiptCompletesPredictionV23 />
           <ReceiptForecastFullWeekSpilloverV25 />
+          <ReceiptForecastKpiSimplifier />
           <ReceiptForecastOnlyPendingToggle />
           <ReceiptForecastExecutivePrintPolishV17 />
           <ReceiptForecastPrintRefinementV18 />
