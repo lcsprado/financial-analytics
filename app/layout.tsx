@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import PwaControls from "@/components/PwaControls";
 import ReceiptChannelSummary from "@/components/ReceiptChannelSummary";
 import "./globals.css";
+import "./print-fix.css";
 
 export const metadata: Metadata = {
   title: "Financial Analytics | Lucas Prado",
