@@ -10,15 +10,6 @@ type Snapshot = {
   received: number;
 };
 
-function normalize(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
-}
-
 function parseCurrency(value: string) {
   const match = value.match(/R\$\s*-?[\d.]+,\d{2}/i);
   if (!match) return 0;
@@ -32,9 +23,12 @@ function dateFromWeekLabel(value: string) {
 }
 
 function selectedWeekValue() {
-  const label = [...document.querySelectorAll<HTMLLabelElement>(".forecast-filter-v13 label")]
-    .find((item) => normalize(item.querySelector(":scope > span")?.textContent || "") === "SEMANA");
-  return label?.querySelector<HTMLSelectElement>("select")?.value || "all";
+  // A ordem dos selects da previsão é fixa no componente principal:
+  // Cliente, Mês previsto, Semana e Confiança.
+  // Ler o terceiro select evita depender do texto/estrutura visual do label,
+  // que pode ser alterado pelos componentes de acabamento do dashboard.
+  const selects = document.querySelectorAll<HTMLSelectElement>(".forecast-filter-v13 select");
+  return selects[2]?.value || "all";
 }
 
 function sameSnapshot(left: Snapshot, right: Snapshot) {
@@ -89,17 +83,22 @@ export default function ReceiptForecastKpiSimplifier() {
       });
     };
 
+    const scheduleAfterReact = () => {
+      schedule();
+      window.setTimeout(schedule, 0);
+    };
+
     schedule();
     const observerTarget = document.querySelector<HTMLElement>(".content-area") || document.body;
     const observer = new MutationObserver(schedule);
     observer.observe(observerTarget, { childList: true, subtree: true, characterData: true, attributes: true });
-    document.addEventListener("change", schedule, true);
-    document.addEventListener("click", schedule, true);
+    document.addEventListener("change", scheduleAfterReact);
+    document.addEventListener("click", scheduleAfterReact);
 
     return () => {
       observer.disconnect();
-      document.removeEventListener("change", schedule, true);
-      document.removeEventListener("click", schedule, true);
+      document.removeEventListener("change", scheduleAfterReact);
+      document.removeEventListener("click", scheduleAfterReact);
       if (frame.current !== null) window.cancelAnimationFrame(frame.current);
     };
   }, [target]);
