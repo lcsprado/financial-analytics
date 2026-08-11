@@ -15,6 +15,7 @@ import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastComparativeCleanup";
 import ReceiptForecastCrossWeekFilterFix from "@/components/ReceiptForecastCrossWeekFilterFix";
 import ReceiptForecastExecutivePrintPolishV17 from "@/components/ReceiptForecastExecutivePrintPolishV17";
+import ReceiptForecastLogoPrintFixV20 from "@/components/ReceiptForecastLogoPrintFixV20";
 import ReceiptForecastOnlyPendingToggle from "@/components/ReceiptForecastOnlyPendingToggle";
 import ReceiptForecastPrintFinalV19 from "@/components/ReceiptForecastPrintFinalV19";
 import ReceiptForecastPrintRefinementV18 from "@/components/ReceiptForecastPrintRefinementV18";
@@ -146,6 +147,7 @@ export default function PerformanceScopedEnhancers() {
           <ReceiptForecastWeekCardsPolishV15 />
           <DashboardVisualPolishV1 />
           <ReceiptForecastPrintFinalV19 />
+          <ReceiptForecastLogoPrintFixV20 />
         </>
       ) : null}
     </>
