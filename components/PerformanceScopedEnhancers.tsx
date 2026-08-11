@@ -16,6 +16,7 @@ import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastCompa
 import ReceiptForecastCrossWeekFilterFix from "@/components/ReceiptForecastCrossWeekFilterFix";
 import ReceiptForecastExecutivePrintPolishV17 from "@/components/ReceiptForecastExecutivePrintPolishV17";
 import ReceiptForecastOnlyPendingToggle from "@/components/ReceiptForecastOnlyPendingToggle";
+import ReceiptForecastPrintFinalV19 from "@/components/ReceiptForecastPrintFinalV19";
 import ReceiptForecastPrintRefinementV18 from "@/components/ReceiptForecastPrintRefinementV18";
 import ReceiptForecastReceivedRuleFix from "@/components/ReceiptForecastReceivedRuleFix";
 import ReceiptForecastWeekCardsPolishV15 from "@/components/ReceiptForecastWeekCardsPolishV15";
@@ -144,6 +145,7 @@ export default function PerformanceScopedEnhancers() {
           <ReceiptForecastComparativeCleanup />
           <ReceiptForecastWeekCardsPolishV15 />
           <DashboardVisualPolishV1 />
+          <ReceiptForecastPrintFinalV19 />
         </>
       ) : null}
     </>
