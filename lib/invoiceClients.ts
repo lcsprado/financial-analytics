@@ -1,4 +1,9 @@
-import { canonicalInvoiceClientName, clientKey, normalizeClientText } from "./clientNames";
+import {
+  canonicalInvoiceClientName,
+  clientKey,
+  manualInvoiceClientName,
+  normalizeClientText,
+} from "./clientNames";
 import type { Invoice } from "./types";
 
 export function normalizeInvoiceClientCode(value: string) {
@@ -53,21 +58,21 @@ export function normalizeInvoiceClientsByCode(invoices: Invoice[]) {
   const preferred = preferredNamesByCode(invoices);
 
   return invoices.map((invoice) => {
+    const manual = manualInvoiceClientName(invoice.clientName);
     const code = normalizeInvoiceClientCode(invoice.clientCode);
-    const representative = code
-      ? preferred.get(code)
-      : canonicalInvoiceClientName(invoice.clientName);
+    const representative = manual || (code ? preferred.get(code) : canonicalInvoiceClientName(invoice.clientName));
     if (!representative || representative === invoice.clientName) return invoice;
     return { ...invoice, clientName: representative };
   });
 }
 
 export function invoiceClientGroupKey(invoice: Invoice) {
-  const canonicalName = canonicalInvoiceClientName(invoice.clientName) || invoice.clientName;
-  const manualKey = clientKey(canonicalName) || normalizeClientText(canonicalName);
-  if (manualKey) return `NAME:${manualKey}`;
+  const manual = manualInvoiceClientName(invoice.clientName);
+  if (manual) return `MANUAL:${normalizeClientText(manual)}`;
 
   const code = normalizeInvoiceClientCode(invoice.clientCode);
   if (code) return `CODE:${code}`;
-  return `NAME:${normalizeClientText(invoice.clientName)}`;
+
+  const name = canonicalInvoiceClientName(invoice.clientName) || invoice.clientName;
+  return `NAME:${clientKey(name) || normalizeClientText(name)}`;
 }
