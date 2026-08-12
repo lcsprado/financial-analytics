@@ -25,8 +25,11 @@ const currency = new Intl.NumberFormat("pt-BR", {
 export default function InvoiceDateRangeFilter() {
   useEffect(() => {
     let applying = false;
+    let frame: number | null = null;
+    let retryTimer: number | null = null;
 
     const enhance = () => {
+      frame = null;
       if (applying) return;
       applying = true;
 
@@ -197,12 +200,19 @@ export default function InvoiceDateRangeFilter() {
       }
     };
 
+    const scheduleEnhance = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(enhance);
+    };
+
     enhance();
+    scheduleEnhance();
+    retryTimer = window.setTimeout(scheduleEnhance, 80);
 
-    const observer = new MutationObserver(enhance);
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    return () => observer.disconnect();
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
   }, []);
 
   return null;
