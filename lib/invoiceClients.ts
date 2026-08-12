@@ -1,4 +1,4 @@
-import { canonicalClientName, clientKey, normalizeClientText } from "./clientNames";
+import { canonicalInvoiceClientName, clientKey, normalizeClientText } from "./clientNames";
 import type { Invoice } from "./types";
 
 export function normalizeInvoiceClientCode(value: string) {
@@ -21,7 +21,7 @@ function preferredNamesByCode(invoices: Invoice[]) {
     const code = normalizeInvoiceClientCode(invoice.clientCode);
     if (!code) return;
 
-    const displayName = canonicalClientName(invoice.clientName) || invoice.clientName.trim();
+    const displayName = canonicalInvoiceClientName(invoice.clientName) || invoice.clientName.trim();
     const nameKey = normalizeClientText(displayName);
     if (!nameKey) return;
 
@@ -47,23 +47,27 @@ function preferredNamesByCode(invoices: Invoice[]) {
 
 /**
  * Padroniza o nome exibido dos registros da FINR020 usando o código do cliente
- * como identidade. O nome mais recorrente do código é usado como representante.
+ * como identidade e aplica, antes disso, os vínculos manuais exclusivos de Emissões.
  */
 export function normalizeInvoiceClientsByCode(invoices: Invoice[]) {
   const preferred = preferredNamesByCode(invoices);
 
   return invoices.map((invoice) => {
     const code = normalizeInvoiceClientCode(invoice.clientCode);
-    const representative = code ? preferred.get(code) : "";
+    const representative = code
+      ? preferred.get(code)
+      : canonicalInvoiceClientName(invoice.clientName);
     if (!representative || representative === invoice.clientName) return invoice;
     return { ...invoice, clientName: representative };
   });
 }
 
 export function invoiceClientGroupKey(invoice: Invoice) {
+  const canonicalName = canonicalInvoiceClientName(invoice.clientName) || invoice.clientName;
+  const manualKey = clientKey(canonicalName) || normalizeClientText(canonicalName);
+  if (manualKey) return `NAME:${manualKey}`;
+
   const code = normalizeInvoiceClientCode(invoice.clientCode);
   if (code) return `CODE:${code}`;
-
-  const name = canonicalClientName(invoice.clientName) || invoice.clientName;
-  return `NAME:${clientKey(name) || normalizeClientText(name)}`;
+  return `NAME:${normalizeClientText(invoice.clientName)}`;
 }
