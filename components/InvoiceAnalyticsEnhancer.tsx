@@ -14,7 +14,6 @@ import {
 } from "recharts";
 import { filterInvoices } from "@/lib/analytics";
 import { compactCurrency, currency } from "@/lib/format";
-import { normalizeInvoiceClientsByCode } from "@/lib/invoiceClients";
 import {
   ANALYSIS_DATA_EVENT,
   loadAnalysisState,
@@ -81,8 +80,8 @@ function activeInvoices(invoices: Invoice[]) {
 }
 
 function filteredRows(invoices: Invoice[], filters: FilterSnapshot) {
-  const normalized = normalizeInvoiceClientsByCode(activeInvoices(invoices));
-  const periodFiltered = filterInvoices(normalized, filters);
+  // filterInvoices já normaliza a FINR020. Evita fazer a mesma etapa duas vezes.
+  const periodFiltered = filterInvoices(activeInvoices(invoices), filters);
   const query = filters.search.trim().toLocaleLowerCase("pt-BR");
 
   return periodFiltered.filter((invoice) => {
@@ -234,8 +233,11 @@ export default function InvoiceAnalyticsEnhancer() {
 
   useEffect(() => {
     let lastSignature = "";
+    let frame: number | null = null;
+    let retryTimer: number | null = null;
 
     const sync = () => {
+      frame = null;
       if (!isInvoiceView()) {
         setPanel(null);
         setChartTarget(null);
@@ -285,20 +287,26 @@ export default function InvoiceAnalyticsEnhancer() {
       setSummaryTarget((current) => current === nextSummaryTarget ? current : nextSummaryTarget);
     };
 
+    const scheduleSync = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(sync);
+    };
+
     sync();
-    document.addEventListener("input", sync, true);
-    document.addEventListener("change", sync, true);
-    document.addEventListener("click", sync, true);
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true });
-    const timer = window.setInterval(sync, 500);
+    scheduleSync();
+    retryTimer = window.setTimeout(scheduleSync, 80);
+    document.addEventListener("input", scheduleSync, true);
+    document.addEventListener("change", scheduleSync, true);
+    document.addEventListener("click", scheduleSync, true);
+    window.addEventListener(ANALYSIS_DATA_EVENT, scheduleSync);
 
     return () => {
-      document.removeEventListener("input", sync, true);
-      document.removeEventListener("change", sync, true);
-      document.removeEventListener("click", sync, true);
-      observer.disconnect();
-      window.clearInterval(timer);
+      document.removeEventListener("input", scheduleSync, true);
+      document.removeEventListener("change", scheduleSync, true);
+      document.removeEventListener("click", scheduleSync, true);
+      window.removeEventListener(ANALYSIS_DATA_EVENT, scheduleSync);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, []);
 
