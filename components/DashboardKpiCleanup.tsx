@@ -31,10 +31,23 @@ function updateKpis() {
 
 export default function DashboardKpiCleanup() {
   useEffect(() => {
+    let frame: number | null = null;
+    const schedule = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        updateKpis();
+      });
+    };
+
     updateKpis();
-    const observer = new MutationObserver(updateKpis);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    schedule();
+    const retry = window.setTimeout(schedule, 80);
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.clearTimeout(retry);
+    };
   }, []);
 
   return (
