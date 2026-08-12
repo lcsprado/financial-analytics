@@ -3,7 +3,7 @@
 import { Check, ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { canonicalClientName, clientKey } from "@/lib/clientNames";
+import { canonicalClientName, canonicalInvoiceClientName, clientKey } from "@/lib/clientNames";
 import { joinClientSelection, splitClientSelection } from "@/lib/clientSelection";
 import { ANALYSIS_DATA_EVENT, loadAnalysisState } from "@/lib/offlineStorage";
 import { canonicalReceiptClientName, receiptClientKey } from "@/lib/receiptClientNames";
@@ -56,7 +56,7 @@ function buildOptions(data: ImportState, scope: Scope, seriesMode: SeriesMode): 
   const grouped = new Map<string, ClientOption>();
 
   const addInvoice = (rawName: string) => {
-    const label = canonicalClientName(rawName);
+    const label = canonicalInvoiceClientName(rawName);
     const key = keyForIdentity(label, identity);
     if (!label || !key || grouped.has(key)) return;
     grouped.set(key, { label, value: label });
@@ -84,7 +84,7 @@ function buildOptions(data: ImportState, scope: Scope, seriesMode: SeriesMode): 
 function labelForSelection(value: string, identity: IdentityMode) {
   return identity === "receipt"
     ? canonicalReceiptClientName(value)
-    : canonicalClientName(value);
+    : canonicalInvoiceClientName(value);
 }
 
 function setNativeSelect(select: HTMLSelectElement, value: string, dispatch = true) {
@@ -367,7 +367,11 @@ export default function ScopedClientFilterEnhancerV2() {
   }, []);
 
   useEffect(() => {
+    let frame: number | null = null;
+    let retryTimer: number | null = null;
+
     const sync = () => {
+      frame = null;
       const nextSelect = document.querySelector<HTMLSelectElement>(".client-filter select");
       const nextTarget = nextSelect?.parentElement ?? null;
       const nextScope = readScope();
@@ -378,13 +382,33 @@ export default function ScopedClientFilterEnhancerV2() {
       setSeriesMode((current) => current === nextSeriesMode ? current : nextSeriesMode);
     };
 
+    const scheduleSync = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(sync);
+    };
+
     sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-series-mode"] });
-    const timer = window.setInterval(sync, 350);
+    scheduleSync();
+    retryTimer = window.setTimeout(scheduleSync, 80);
+
+    document.addEventListener("click", scheduleSync, true);
+    document.addEventListener("change", scheduleSync, true);
+
+    // O único MutationObserver necessário aqui é o seletor de série do gráfico.
+    // Não observa mais toda a árvore da página nem roda polling a cada 350 ms.
+    const observer = new MutationObserver(scheduleSync);
+    observer.observe(document.body, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ["data-series-mode"],
+    });
+
     return () => {
+      document.removeEventListener("click", scheduleSync, true);
+      document.removeEventListener("change", scheduleSync, true);
       observer.disconnect();
-      window.clearInterval(timer);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, []);
 
