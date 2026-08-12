@@ -6,6 +6,7 @@ import DashboardKpiCleanup from "@/components/DashboardKpiCleanup";
 import DashboardVisualControls from "@/components/DashboardVisualControls";
 import DashboardVisualPolishV1 from "@/components/DashboardVisualPolishV1";
 import InvoiceAnalyticsEnhancer from "@/components/InvoiceAnalyticsEnhancer";
+import InvoiceClientLinkManager from "@/components/InvoiceClientLinkManager";
 import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
 import ReceiptClientIdentityRefresh from "@/components/ReceiptClientIdentityRefresh";
@@ -120,6 +121,7 @@ export default function PerformanceScopedEnhancers() {
 
       {scope === "invoices" ? (
         <>
+          <InvoiceClientLinkManager />
           <InvoiceDateRangeFilter />
           <InvoiceAnalyticsEnhancer />
         </>
