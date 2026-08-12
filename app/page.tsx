@@ -1,3 +1,4 @@
+import ClientFilterInteractionFix from "@/components/ClientFilterInteractionFix";
 import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
 import FinancialDashboard from "@/components/FinancialDashboard";
 import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalizer";
@@ -16,6 +17,7 @@ export default function Home() {
       <FinancialDashboard />
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
+      <ClientFilterInteractionFix />
       <InvoiceClientCodeNormalizer />
       <ReceiptClientIdentityNormalizer />
       <ReceiptForecastEnhancerV13 />
