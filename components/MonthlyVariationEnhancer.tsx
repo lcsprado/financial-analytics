@@ -136,7 +136,11 @@ function MonthlyVariationStrip({ panel }: { panel: HTMLElement }) {
   const [points, setPoints] = useState<VariationPoint[]>([]);
 
   useEffect(() => {
+    let frame: number | null = null;
+    let settleTimer: number | null = null;
+
     const update = () => {
+      frame = null;
       const nextMode = (panel.dataset.seriesMode as SeriesMode | undefined) ?? "both";
       const nextPoints = readVariations(panel);
       const signature = JSON.stringify([nextMode, nextPoints]);
@@ -147,19 +151,28 @@ function MonthlyVariationStrip({ panel }: { panel: HTMLElement }) {
       setPoints(nextPoints);
     };
 
-    update();
-    const observer = new MutationObserver(update);
+    const scheduleUpdate = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(update);
+    };
+
+    scheduleUpdate();
+    // Uma segunda leitura curta cobre o fim da montagem/animação inicial do Recharts,
+    // sem manter polling permanente na página.
+    settleTimer = window.setTimeout(scheduleUpdate, 180);
+
+    const observer = new MutationObserver(scheduleUpdate);
     observer.observe(panel, {
       attributes: true,
       attributeFilter: ["data-series-mode"],
       childList: true,
       subtree: true,
     });
-    const timer = window.setInterval(update, 600);
 
     return () => {
       observer.disconnect();
-      window.clearInterval(timer);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
     };
   }, [panel]);
 
@@ -204,17 +217,29 @@ export default function MonthlyVariationEnhancer() {
   const [chartPanel, setChartPanel] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
+    let frame: number | null = null;
+    let retryTimer: number | null = null;
+
     const sync = () => {
+      frame = null;
       hideDifferenceCard();
       const nextPanel = findChartPanel();
       setChartPanel((current) => current === nextPanel ? current : nextPanel);
     };
 
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true });
+    const scheduleSync = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(sync);
+    };
 
-    return () => observer.disconnect();
+    sync();
+    scheduleSync();
+    retryTimer = window.setTimeout(scheduleSync, 80);
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
   }, []);
 
   return (
