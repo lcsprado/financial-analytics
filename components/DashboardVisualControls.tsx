@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { ANALYSIS_DATA_EVENT } from "@/lib/offlineStorage";
 
 type SeriesMode = "both" | "emitted" | "received";
 
@@ -131,7 +132,7 @@ function ChartSeriesControl({ panel }: { panel: HTMLElement }) {
         item.style.display = visible ? "" : "none";
       });
 
-      panel.dataset.seriesMode = mode;
+      if (panel.dataset.seriesMode !== mode) panel.dataset.seriesMode = mode;
     };
 
     apply();
@@ -155,7 +156,11 @@ export default function DashboardVisualControls() {
   const [chartHeader, setChartHeader] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
+    let frame: number | null = null;
+    let retryTimer: number | null = null;
+
     const sync = () => {
+      frame = null;
       const nextPanel = findPanel("Emitido × recebido");
       const nextHeader = nextPanel?.querySelector<HTMLElement>(".panel-header") ?? null;
       setChartPanel((current) => current === nextPanel ? current : nextPanel);
@@ -163,11 +168,23 @@ export default function DashboardVisualControls() {
       decorateBankLegends();
     };
 
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true });
+    const scheduleSync = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(sync);
+    };
 
-    return () => observer.disconnect();
+    sync();
+    scheduleSync();
+    retryTimer = window.setTimeout(scheduleSync, 120);
+    document.addEventListener("change", scheduleSync, true);
+    window.addEventListener(ANALYSIS_DATA_EVENT, scheduleSync);
+
+    return () => {
+      document.removeEventListener("change", scheduleSync, true);
+      window.removeEventListener(ANALYSIS_DATA_EVENT, scheduleSync);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
   }, []);
 
   return (
