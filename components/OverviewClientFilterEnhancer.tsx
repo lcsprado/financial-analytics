@@ -12,6 +12,11 @@ import {
   overviewAliasKey,
   type OverviewClientLink,
 } from "@/lib/overviewClientLinks";
+import {
+  listReceiptClientLinks,
+  RECEIPT_CLIENT_LINKS_EVENT,
+  type ReceiptClientLink,
+} from "@/lib/receiptClientLinks";
 import { canonicalReceiptClientName } from "@/lib/receiptClientNames";
 import type { ImportState } from "@/lib/types";
 
@@ -34,22 +39,82 @@ function logicalKey(value: string) {
   return clientKey(canonicalReceiptClientName(value) || value) || normalize(value);
 }
 
-function buildOptions(data: ImportState, links: OverviewClientLink[], seriesMode: SeriesMode) {
+function buildOptions(
+  data: ImportState,
+  links: OverviewClientLink[],
+  receiptLinks: ReceiptClientLink[],
+  seriesMode: SeriesMode,
+) {
   const byAlias = new Map(links.map((link) => [link.alias_key, link] as const));
+  const overviewMembers = new Map<string, string[]>();
+  links.forEach((link) => {
+    const members = overviewMembers.get(link.group_id) ?? [];
+    if (!members.some((value) => normalize(value) === normalize(link.alias_name))) {
+      members.push(link.alias_name);
+    }
+    overviewMembers.set(link.group_id, members);
+  });
+
+  // Recebimentos podem chegar ao painel já com o nome canônico de um vínculo
+  // próprio da aba Recebimentos. Se qualquer alias daquele vínculo pertence a
+  // um grupo da Visão Geral, o nome canônico também deve cair no mesmo grupo.
+  const receiptGroups = new Map<string, ReceiptClientLink[]>();
+  receiptLinks.forEach((link) => {
+    const group = receiptGroups.get(link.group_id) ?? [];
+    group.push(link);
+    receiptGroups.set(link.group_id, group);
+  });
+
+  const overviewByReceiptIdentity = new Map<string, OverviewClientLink>();
+  receiptGroups.forEach((group) => {
+    const overviewLink = group
+      .map((link) => byAlias.get(overviewAliasKey(link.alias_name)))
+      .find((link): link is OverviewClientLink => Boolean(link));
+    if (!overviewLink) return;
+
+    group.forEach((link) => {
+      const canonicalKey = normalize(canonicalReceiptClientName(link.canonical_name));
+      const aliasKey = normalize(canonicalReceiptClientName(link.alias_name));
+      if (canonicalKey && !overviewByReceiptIdentity.has(canonicalKey)) {
+        overviewByReceiptIdentity.set(canonicalKey, overviewLink);
+      }
+      if (aliasKey && !overviewByReceiptIdentity.has(aliasKey)) {
+        overviewByReceiptIdentity.set(aliasKey, overviewLink);
+      }
+    });
+  });
+
   const grouped = new Map<string, ClientOption>();
 
   const add = (label: string) => {
     const cleaned = label.replace(/\s+/g, " ").trim();
     if (!cleaned) return;
-    const manual = byAlias.get(overviewAliasKey(cleaned));
+
+    const directManual = byAlias.get(overviewAliasKey(cleaned));
+    const receiptManual = overviewByReceiptIdentity.get(normalize(canonicalReceiptClientName(cleaned)));
+    const manual = directManual || receiptManual;
     const key = manual ? `OVERVIEW:${manual.group_id}` : `CLIENT:${logicalKey(cleaned)}`;
     const display = manual?.canonical_name || cleaned;
+    const groupValues = manual ? overviewMembers.get(manual.group_id) ?? [] : [];
+    const values = [...groupValues, cleaned];
+
     const current = grouped.get(key);
     if (current) {
-      if (!current.filterValues.some((value) => normalize(value) === normalize(cleaned))) current.filterValues.push(cleaned);
+      values.forEach((value) => {
+        if (!current.filterValues.some((item) => normalize(item) === normalize(value))) {
+          current.filterValues.push(value);
+        }
+      });
       return;
     }
-    grouped.set(key, { key, label: display, filterValues: [cleaned] });
+
+    const filterValues: string[] = [];
+    values.forEach((value) => {
+      if (value && !filterValues.some((item) => normalize(item) === normalize(value))) {
+        filterValues.push(value);
+      }
+    });
+    grouped.set(key, { key, label: display, filterValues });
   };
 
   if (seriesMode !== "received") {
@@ -220,23 +285,28 @@ export default function OverviewClientFilterEnhancer() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [data, setData] = useState<ImportState>({ invoices: [], receipts: [] });
   const [links, setLinks] = useState<OverviewClientLink[]>([]);
+  const [receiptLinks, setReceiptLinks] = useState<ReceiptClientLink[]>([]);
   const [seriesMode, setSeriesMode] = useState<SeriesMode>("both");
 
   useEffect(() => {
     let active = true;
-    void Promise.all([loadAnalysisState(), listOverviewClientLinks()]).then(([stored, nextLinks]) => {
+    void Promise.all([loadAnalysisState(), listOverviewClientLinks(), listReceiptClientLinks()]).then(([stored, nextLinks, nextReceiptLinks]) => {
       if (!active) return;
       if (stored) setData(stored);
       setLinks(nextLinks);
+      setReceiptLinks(nextReceiptLinks);
     });
     const onData = (event: Event) => setData((event as CustomEvent<ImportState>).detail);
     const onLinks = () => { void listOverviewClientLinks().then(setLinks); };
+    const onReceiptLinks = () => { void listReceiptClientLinks().then(setReceiptLinks); };
     window.addEventListener(ANALYSIS_DATA_EVENT, onData);
     window.addEventListener(OVERVIEW_CLIENT_LINKS_EVENT, onLinks);
+    window.addEventListener(RECEIPT_CLIENT_LINKS_EVENT, onReceiptLinks);
     return () => {
       active = false;
       window.removeEventListener(ANALYSIS_DATA_EVENT, onData);
       window.removeEventListener(OVERVIEW_CLIENT_LINKS_EVENT, onLinks);
+      window.removeEventListener(RECEIPT_CLIENT_LINKS_EVENT, onReceiptLinks);
     };
   }, []);
 
@@ -251,18 +321,29 @@ export default function OverviewClientFilterEnhancer() {
       setSeriesMode((current) => current === mode ? current : mode);
     };
     const schedule = () => { if (frame === null) frame = requestAnimationFrame(sync); };
+    const onClick = (event: MouseEvent) => {
+      const element = event.target instanceof Element ? event.target : null;
+      if (element?.closest(".clear-filter")) {
+        const clientSelect = document.querySelector<HTMLSelectElement>(".client-filter select");
+        if (clientSelect) setNativeSelect(clientSelect, "");
+      }
+      schedule();
+    };
     sync();
-    document.addEventListener("click", schedule, true);
+    document.addEventListener("click", onClick, true);
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ["data-series-mode"] });
     return () => {
-      document.removeEventListener("click", schedule, true);
+      document.removeEventListener("click", onClick, true);
       observer.disconnect();
       if (frame !== null) cancelAnimationFrame(frame);
     };
   }, []);
 
-  const options = useMemo(() => buildOptions(data, links, seriesMode), [data, links, seriesMode]);
+  const options = useMemo(
+    () => buildOptions(data, links, receiptLinks, seriesMode),
+    [data, links, receiptLinks, seriesMode],
+  );
 
   useEffect(() => {
     if (!select) return;
