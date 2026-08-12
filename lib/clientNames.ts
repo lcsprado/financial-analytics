@@ -46,19 +46,23 @@ function isSaoMateusAlias(value: string) {
   return isAmaOrUbs || mentionsMateus;
 }
 
+/** Nome canônico básico compartilhado. Não aplica vínculos manuais de Emissões. */
 export function canonicalClientName(value: string) {
   const cleaned = value.replace(/\s+/g, " ").trim();
   if (!cleaned) return "";
-
-  const manual = invoiceAliasMap.get(normalizeClientText(cleaned));
-  if (manual) return manual;
-
   if (isSaoMateusAlias(cleaned)) return SAO_MATEUS_CANONICAL_NAME;
   return cleaned;
 }
 
+/** Nome canônico exclusivo da base de Emissões/FINR020. */
+export function canonicalInvoiceClientName(value: string) {
+  const basic = canonicalClientName(value);
+  if (!basic) return "";
+  return invoiceAliasMap.get(normalizeClientText(basic)) || basic;
+}
+
 export function clientKey(value: string) {
-  const canonical = canonicalClientName(value);
+  const canonical = canonicalInvoiceClientName(value);
   if (!canonical) return "";
   if (canonical === SAO_MATEUS_CANONICAL_NAME) return "FUNDACAO ABC SAO MATEUS";
 
