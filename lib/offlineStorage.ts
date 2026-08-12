@@ -34,6 +34,7 @@ export type StoredImportedFile = {
 const ANALYSIS_KEY = "analysis";
 const CHANNEL_KEY = "receipt-channels";
 
+let runtimeAnalysisState: ImportState | null = null;
 let runtimeChannelPayload: unknown | null = null;
 
 function requestResult<T>(request: IDBRequest<T>) {
@@ -135,12 +136,16 @@ async function migrateLegacyStorage() {
 }
 
 export async function loadAnalysisState() {
+  if (runtimeAnalysisState !== null) return runtimeAnalysisState;
   await migrateLegacyStorage();
   if (!hasStorageConsent()) return null;
-  return getRecord<ImportState>(ANALYSIS_KEY);
+  const stored = await getRecord<ImportState>(ANALYSIS_KEY);
+  runtimeAnalysisState = stored;
+  return stored;
 }
 
 export async function saveAnalysisState(data: ImportState) {
+  runtimeAnalysisState = data;
   if (!hasStorageConsent()) return;
   await putRecord(ANALYSIS_KEY, data);
 }
@@ -186,10 +191,12 @@ export function saveStoredFilter(filter: PeriodFilter) {
 }
 
 export function notifyAnalysisData(data: ImportState) {
+  runtimeAnalysisState = data;
   window.dispatchEvent(new CustomEvent<ImportState>(ANALYSIS_DATA_EVENT, { detail: data }));
 }
 
 export async function clearOfflineData() {
+  runtimeAnalysisState = null;
   runtimeChannelPayload = null;
   if ("indexedDB" in window) {
     const database = await openDatabase();
