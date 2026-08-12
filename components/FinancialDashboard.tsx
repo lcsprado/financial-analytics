@@ -13,7 +13,6 @@ import {
   ReceiptText,
   RefreshCcw,
   Search,
-  TrendingDown,
   TrendingUp,
   UploadCloud,
   Users,
@@ -554,13 +553,6 @@ export default function FinancialDashboard() {
                     <KpiCard title="Receita emitida" value={currency.format(dashboard.emitted)} detail={`${integer.format(dashboard.invoiceCount)} notas no período`} icon={<TrendingUp size={20} />} />
                     <KpiCard title="Recebido" value={currency.format(dashboard.received)} detail={`${integer.format(dashboard.receiptCount)} lançamentos`} icon={<CircleDollarSign size={20} />} tone="success" />
                     <div id="receipt-channel-kpi-slot" className="receipt-channel-kpi-slot" />
-                    <KpiCard
-                      title="Diferença do período"
-                      value={currency.format(dashboard.difference)}
-                      detail={dashboard.difference >= 0 ? "Emitido acima do recebido" : "Recebido acima do emitido"}
-                      icon={dashboard.difference >= 0 ? <TrendingDown size={20} /> : <TrendingUp size={20} />}
-                      tone={dashboard.difference >= 0 ? "warning" : "success"}
-                    />
                     <KpiCard title="Ticket médio" value={currency.format(dashboard.ticket)} detail={`Maior cliente: ${dashboard.largestClient}`} icon={<Building2 size={20} />} />
                   </section>
 
