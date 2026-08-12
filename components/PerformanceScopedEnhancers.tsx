@@ -9,6 +9,8 @@ import InvoiceAnalyticsEnhancer from "@/components/InvoiceAnalyticsEnhancer";
 import InvoiceClientLinkManager from "@/components/InvoiceClientLinkManager";
 import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
+import OverviewClientFilterEnhancer from "@/components/OverviewClientFilterEnhancer";
+import OverviewClientLinkManager from "@/components/OverviewClientLinkManager";
 import ReceiptClientIdentityRefresh from "@/components/ReceiptClientIdentityRefresh";
 import ReceiptClientLinkManager from "@/components/ReceiptClientLinkManager";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
@@ -104,12 +106,14 @@ export default function PerformanceScopedEnhancers() {
 
   return (
     <>
-      {standardView ? <ScopedClientFilterEnhancerV2 key={`client-filter-${scope}`} /> : null}
+      {scope === "overview" ? <OverviewClientFilterEnhancer /> : null}
+      {standardView && scope !== "overview" ? <ScopedClientFilterEnhancerV2 key={`client-filter-${scope}`} /> : null}
       {standardView ? <ClientFilterInteractionFix /> : null}
 
       {scope === "overview" ? (
         <>
           <ReceiptClientIdentityRefresh />
+          <OverviewClientLinkManager />
           <DashboardKpiCleanup />
           <DashboardVisualControls />
           <MonthlyVariationEnhancer />
