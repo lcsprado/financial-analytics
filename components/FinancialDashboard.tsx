@@ -79,6 +79,10 @@ const NAV_ITEMS: NavItem[] = [
 
 const PIE_COLORS = ["#5d72f6", "#22c7a9", "#f8b84e", "#ef718a", "#9b7cf7", "#58b9ee"];
 const INCLUDE_CHANNEL_EVENT = "financial-analytics-receipt-channels-include-changed";
+const printVariation = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 1,
+  signDisplay: "exceptZero",
+});
 
 type ReceiptChannelEntry = {
   receiptDate: string;
@@ -116,6 +120,11 @@ function KpiCard({
       <span className="kpi-detail">{detail}</span>
     </article>
   );
+}
+
+function variationLabel(current: number, previous: number) {
+  if (!previous) return "—";
+  return `${printVariation.format(((current - previous) / previous) * 100)}%`;
 }
 
 function Panel({ title, subtitle, children, className = "" }: {
@@ -541,7 +550,7 @@ export default function FinancialDashboard() {
 
               {view === "overview" && (
                 <>
-                  <section className="kpi-grid">
+                  <section className="kpi-grid overview-print-kpis">
                     <KpiCard title="Receita emitida" value={currency.format(dashboard.emitted)} detail={`${integer.format(dashboard.invoiceCount)} notas no período`} icon={<TrendingUp size={20} />} />
                     <KpiCard title="Recebido" value={currency.format(dashboard.received)} detail={`${integer.format(dashboard.receiptCount)} lançamentos`} icon={<CircleDollarSign size={20} />} tone="success" />
                     <div id="receipt-channel-kpi-slot" className="receipt-channel-kpi-slot" />
@@ -555,7 +564,7 @@ export default function FinancialDashboard() {
                     <KpiCard title="Ticket médio" value={currency.format(dashboard.ticket)} detail={`Maior cliente: ${dashboard.largestClient}`} icon={<Building2 size={20} />} />
                   </section>
 
-                  <section className="chart-grid">
+                  <section className="chart-grid overview-print-page-one">
                     <Panel title="Emitido × recebido" subtitle="Clique em um mês para filtrar o painel" className="wide-panel">
                       <div className="chart-box">
                         <ResponsiveContainer width="100%" height="100%">
@@ -576,6 +585,20 @@ export default function FinancialDashboard() {
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
+                      {dashboard.monthly.length > 1 && (
+                        <section className="print-monthly-variation" aria-label="Variação mensal impressa">
+                          <div><strong>Variação mês a mês</strong><span>Comparação com o mês anterior</span></div>
+                          <div className="print-monthly-variation-grid">
+                            {dashboard.monthly.slice(1).map((item, index) => (
+                              <article key={item.monthIndex}>
+                                <strong>{item.month}</strong>
+                                <span><b>E</b>{variationLabel(item.emitted, dashboard.monthly[index].emitted)}</span>
+                                <span><b>R</b>{variationLabel(item.received, dashboard.monthly[index].received)}</span>
+                              </article>
+                            ))}
+                          </div>
+                        </section>
+                      )}
                     </Panel>
 
                     <Panel title="Recebimentos por banco" subtitle="Distribuição da entrada financeira">
@@ -601,7 +624,7 @@ export default function FinancialDashboard() {
                     </Panel>
                   </section>
 
-                  <section className="lower-grid">
+                  <section className="lower-grid overview-print-page-two">
                     <Panel title="Top clientes" subtitle="Ranking por valor emitido">
                       <div className="ranking-list">
                         {dashboard.topClients.slice(0, 7).map((client, index) => {
@@ -633,7 +656,7 @@ export default function FinancialDashboard() {
                     </Panel>
                   </section>
 
-                  <section className="insight-strip">
+                  <section className="insight-strip overview-print-insights">
                     <div><span>Taxa de identificação de NF</span><strong>{percent.format(dashboard.matchRate)}</strong><small>Recebimentos com NF localizada na FINR020</small></div>
                     <div><span>Concentração do maior cliente</span><strong>{percent.format(dashboard.emitted ? (dashboard.topClients[0]?.value ?? 0) / dashboard.emitted : 0)}</strong><small>Participação na receita emitida</small></div>
                     <div><span>Valor médio recebido</span><strong>{currency.format(dashboard.receiptCount ? dashboard.received / dashboard.receiptCount : 0)}</strong><small>Por lançamento bancário</small></div>
@@ -643,6 +666,12 @@ export default function FinancialDashboard() {
 
               {view === "invoices" && (
                 <Panel title="Notas emitidas" subtitle={`${integer.format(invoiceRows.length)} registros após os filtros`}>
+                  <div className="print-table-summary">
+                    <span>Registros <strong>{integer.format(invoiceRows.length)}</strong></span>
+                    <span>Ticket médio <strong>{currency.format(invoiceRows.length ? invoiceRows.reduce((sum, item) => sum + item.grossValue, 0) / invoiceRows.length : 0)}</strong></span>
+                    <span>Total bruto <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.grossValue, 0))}</strong></span>
+                    <span>Total líquido <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.netValue, 0))}</strong></span>
+                  </div>
                   <div className="table-toolbar">
                     <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por NF, cliente ou código" /></div>
                     <div style={{ marginLeft: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", width: "32%", minWidth: 320 }}>
@@ -666,6 +695,11 @@ export default function FinancialDashboard() {
 
               {view === "receipts" && (
                 <Panel title="Recebimentos bancários" subtitle={`${integer.format(receiptRows.length)} lançamentos após os filtros`}>
+                  <div className="print-table-summary">
+                    <span>Lançamentos <strong>{integer.format(receiptRows.length)}</strong></span>
+                    <span>Valor médio <strong>{currency.format(receiptRows.length ? receiptRows.reduce((sum, item) => sum + item.amount, 0) / receiptRows.length : 0)}</strong></span>
+                    <span>Total recebido <strong>{currency.format(receiptRows.reduce((sum, item) => sum + item.amount, 0))}</strong></span>
+                  </div>
                   <div className="table-toolbar">
                     <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por cliente, NF ou banco" /></div>
                     <span>Total: <strong>{currency.format(receiptRows.reduce((sum, item) => sum + item.amount, 0))}</strong></span>
