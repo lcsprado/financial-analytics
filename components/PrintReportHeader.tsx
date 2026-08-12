@@ -6,7 +6,11 @@ export type PrintReportMeta = {
 
 export default function PrintReportHeader({ meta }: { meta: PrintReportMeta }) {
   return (
-    <header className="print-report-header" aria-hidden="true">
+    <header
+      className="print-report-header"
+      aria-hidden="true"
+      style={{ display: "none" }}
+    >
       <div className="print-report-brand">
         <img src="/report-assets/biomega-logo.jpg" alt="Biomega" />
         <div>
