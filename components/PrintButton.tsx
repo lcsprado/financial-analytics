@@ -265,7 +265,7 @@ export default function PrintButton() {
           }
 
           .kpi-grid {
-            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             gap: 8px !important;
             margin-bottom: 9px !important;
           }

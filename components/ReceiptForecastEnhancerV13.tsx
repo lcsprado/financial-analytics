@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
+  Flag,
   Plus,
   RotateCcw,
   SlidersHorizontal,
@@ -15,7 +16,7 @@ import {
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
-import { compactCurrency, currency, formatDate, integer } from "@/lib/format";
+import { compactCurrency, currency, formatDate } from "@/lib/format";
 import { ANALYSIS_DATA_EVENT, loadAnalysisState, OFFLINE_DATA_CLEARED_EVENT } from "@/lib/offlineStorage";
 import { canonicalReceiptClientName } from "@/lib/receiptClientNames";
 import {
@@ -29,8 +30,7 @@ import type { ImportState, Receipt } from "@/lib/types";
 
 type Confidence = "Alta" | "Média" | "—";
 type RowStatus = "Previsto" | "Parcial" | "Recebido" | "Confirmado" | "Manual";
-type CardScope = "all" | "received" | "high";
-type ForecastWeek = { id: string; index: number; label: string; start: Date; end: Date };
+export type ForecastWeek = { id: string; index: number; label: string; start: Date; end: Date; ownerMonth: string };
 type HistoryMonth = { key: string; label: string; shortLabel: string; start: Date };
 type DayAggregate = { date: Date; amount: number; day: number; endDistance: number };
 type ClusterSample = { monthIndex: number; amount: number; day: number; endDistance: number };
@@ -47,8 +47,8 @@ type PaymentSlot = {
   monthValues: number[];
   monthDays: number[];
 };
-type ActualSummary = { total: number; dates: string[] };
-type ForecastRow = {
+type ActualSummary = { key: string; clientKey: string; clientName: string; weekId: string; total: number; dates: string[] };
+export type ForecastRow = {
   key: string;
   sourceKey: string;
   clientKey: string;
@@ -70,6 +70,12 @@ type ForecastRow = {
   manualNote?: string;
   adjustmentId?: string;
 };
+export type ForecastFilters = {
+  selectedWeek: string;
+  selectedClient: string;
+  selectedConfidence: "Todas" | "Alta" | "Média";
+  onlyPending: boolean;
+};
 type ModalState =
   | { type: "move"; row: ForecastRow }
   | { type: "confirm"; row: ForecastRow }
@@ -81,7 +87,6 @@ const EMPTY_STATE: ImportState = { invoices: [], receipts: [] };
 const HISTORY_MONTHS = 3;
 const MIN_RECURRING_MONTHS = 2;
 const CLUSTER_TOLERANCE_DAYS = 4;
-const PAID_TOLERANCE_RATIO = 0.05;
 const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
 const SHORT_MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit" });
 
@@ -127,7 +132,7 @@ function sourceReceipts(receipts: Receipt[]) {
   const real = receipts.filter((receipt) => !receipt.id.startsWith("demo-receipt-") && receipt.sourceSheet !== "DEMONSTRAÇÃO");
   return real.length ? real : receipts;
 }
-function buildWeeks(month: Date): ForecastWeek[] {
+export function buildWeeks(month: Date): ForecastWeek[] {
   const first = new Date(month.getFullYear(), month.getMonth(), 1, 12);
   let monday = addDays(first, (8 - first.getDay()) % 7);
   const weeks: ForecastWeek[] = [];
@@ -140,6 +145,7 @@ function buildWeeks(month: Date): ForecastWeek[] {
       label: `Semana ${index + 1} · ${formatDate(toIsoDate(monday))} a ${formatDate(toIsoDate(friday))}`,
       start: monday,
       end: friday,
+      ownerMonth: monthKey(monday),
     });
     monday = addDays(monday, 7);
     index += 1;
@@ -191,7 +197,7 @@ function clusterClientSamples(monthlyDays: DayAggregate[][]) {
   cluster(samples.filter((sample) => sample.day >= 25 || sample.endDistance <= 6), true);
   return clusters;
 }
-function buildHistory(receipts: Receipt[], now = new Date()) {
+export function buildHistory(receipts: Receipt[], now = new Date()) {
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1, 12);
   const start = addMonths(currentMonth, -HISTORY_MONTHS);
   const months: HistoryMonth[] = Array.from({ length: HISTORY_MONTHS }, (_, index) => {
@@ -270,10 +276,11 @@ function projectedDate(slot: PaymentSlot, targetMonth: Date) {
     : new Date(targetMonth.getFullYear(), targetMonth.getMonth(), Math.min(daysInMonth(targetMonth), Math.max(1, slot.nominalDay)), 12);
   return nextBusinessDay(nominal);
 }
-function buildActuals(receipts: Receipt[], weeks: ForecastWeek[], targetMonth: Date) {
+function buildActuals(receipts: Receipt[], weeks: ForecastWeek[]) {
   const byClientWeek = new Map<string, ActualSummary>();
-  const first = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1, 12);
-  const last = weeks.length ? weeks[weeks.length - 1].end : endOfMonth(targetMonth);
+  const first = weeks[0]?.start;
+  const last = weeks[weeks.length - 1]?.end;
+  if (!first || !last) return [];
   sourceReceipts(receipts).forEach((receipt) => {
     const date = parseIsoDate(receipt.receiptDate);
     const clientName = canonicalReceiptClientName(receipt.clientHint || receipt.description);
@@ -281,70 +288,145 @@ function buildActuals(receipts: Receipt[], weeks: ForecastWeek[], targetMonth: D
     const week = weeks.find((item) => isBetween(date, item.start, item.end));
     if (!week) return;
     const key = `${normalizeKey(clientName)}|${week.id}`;
-    const current = byClientWeek.get(key) ?? { total: 0, dates: [] };
+    const current = byClientWeek.get(key) ?? {
+      key,
+      clientKey: normalizeKey(clientName),
+      clientName,
+      weekId: week.id,
+      total: 0,
+      dates: [],
+    };
     current.total += receipt.amount;
     if (!current.dates.includes(receipt.receiptDate)) current.dates.push(receipt.receiptDate);
     current.dates.sort();
     byClientWeek.set(key, current);
   });
-  return byClientWeek;
+  return [...byClientWeek.values()].sort((left, right) =>
+    (left.dates[0] ?? left.weekId).localeCompare(right.dates[0] ?? right.weekId),
+  );
 }
-function buildRows(receipts: Receipt[], history: ReturnType<typeof buildHistory>, targetMonth: Date, weeks: ForecastWeek[]) {
-  const actuals = buildActuals(receipts, weeks, targetMonth);
-  const usedActualKeys = new Set<string>();
+type ForecastCandidate = { slot: PaymentSlot; estimatedDate: Date; week: ForecastWeek };
+
+function monthsCoveredByWeeks(weeks: ForecastWeek[]) {
+  const first = weeks[0]?.start;
+  const last = weeks[weeks.length - 1]?.end;
+  if (!first || !last) return [];
+  const result: Date[] = [];
+  let cursor = new Date(first.getFullYear(), first.getMonth(), 1, 12);
+  const finalMonth = monthKey(last);
+  while (monthKey(cursor) <= finalMonth) {
+    result.push(cursor);
+    cursor = addMonths(cursor, 1);
+  }
+  return result;
+}
+
+function buildForecastCandidates(history: ReturnType<typeof buildHistory>, weeks: ForecastWeek[]) {
+  const projectionMonths = monthsCoveredByWeeks(weeks);
+  return history.slots.flatMap((slot) => projectionMonths.flatMap((projectionMonth) => {
+    const estimatedDate = projectedDate(slot, projectionMonth);
+    const week = weeks.find((item) => isBetween(estimatedDate, item.start, item.end));
+    return week ? [{ slot, estimatedDate, week }] : [];
+  }));
+}
+
+function daysBetween(left: Date, right: Date) {
+  return Math.round((left.getTime() - right.getTime()) / 86_400_000);
+}
+
+function candidateScore(candidate: ForecastCandidate, actual: ActualSummary) {
+  const actualDate = parseIsoDate(actual.dates[0] ?? "");
+  if (!actualDate) return Infinity;
+  const dayDistance = Math.abs(daysBetween(actualDate, candidate.estimatedDate));
+  if (dayDistance > 14) return Infinity;
+  const valueDistance = candidate.slot.expected > 0
+    ? Math.abs(actual.total - candidate.slot.expected) / candidate.slot.expected
+    : 0;
+  return dayDistance + Math.min(12, valueDistance * 7) - (candidate.week.id === actual.weekId ? 20 : 0);
+}
+
+export function buildRows(receipts: Receipt[], history: ReturnType<typeof buildHistory>, weeks: ForecastWeek[]) {
+  const actuals = buildActuals(receipts, weeks);
+  const candidates = buildForecastCandidates(history, weeks);
+  const matchedCandidateIndexes = new Set<number>();
+  const matchedActualKeys = new Set<string>();
   const rows: ForecastRow[] = [];
-  history.slots.forEach((slot) => {
-    const date = projectedDate(slot, targetMonth);
-    const week = weeks.find((item) => isBetween(date, item.start, item.end));
-    if (!week) return;
-    const actualKey = `${slot.clientKey}|${week.id}`;
-    const actual = actuals.get(actualKey);
-    if (actual) usedActualKeys.add(actualKey);
-    const expected = slot.expected;
-    const received = actual?.total ?? 0;
-    const remaining = Math.max(0, expected - received);
-    const tolerance = Math.max(1000, expected * PAID_TOLERANCE_RATIO);
-    const status: RowStatus = actual ? (remaining <= tolerance ? "Recebido" : "Parcial") : "Previsto";
-    const sourceKey = `${slot.clientKey}|${week.id}`;
+
+  actuals.forEach((actual) => {
+    let bestIndex = -1;
+    let bestScore = Infinity;
+    candidates.forEach((candidate, index) => {
+      if (matchedCandidateIndexes.has(index) || candidate.slot.clientKey !== actual.clientKey) return;
+      const score = candidateScore(candidate, actual);
+      if (score < bestScore) {
+        bestIndex = index;
+        bestScore = score;
+      }
+    });
+    if (bestIndex < 0 || !Number.isFinite(bestScore)) return;
+
+    const candidate = candidates[bestIndex];
+    const actualWeek = weeks.find((week) => week.id === actual.weekId);
+    if (!actualWeek) return;
+    matchedCandidateIndexes.add(bestIndex);
+    matchedActualKeys.add(actual.key);
+    const sourceKey = `${candidate.slot.clientKey}|${candidate.week.id}`;
     rows.push({
-      key: `${slot.id}|${week.id}`,
+      key: `${candidate.slot.id}|${candidate.week.id}|actual:${actual.key}`,
       sourceKey,
+      clientKey: candidate.slot.clientKey,
+      clientName: candidate.slot.clientName,
+      weekId: actualWeek.id,
+      weekLabel: actualWeek.label,
+      weekStart: toIsoDate(actualWeek.start),
+      weekEnd: toIsoDate(actualWeek.end),
+      estimatedDate: toIsoDate(candidate.estimatedDate),
+      displayValue: actual.total,
+      expected: candidate.slot.expected,
+      remaining: 0,
+      status: "Recebido",
+      activeMonths: candidate.slot.activeMonths,
+      confidence: candidate.slot.confidence,
+      historicalValues: candidate.slot.monthValues,
+      historicalDays: candidate.slot.monthDays,
+      actual,
+    });
+  });
+
+  candidates.forEach((candidate, index) => {
+    if (matchedCandidateIndexes.has(index)) return;
+    const { slot, estimatedDate, week } = candidate;
+    rows.push({
+      key: `${slot.id}|${week.id}|${toIsoDate(estimatedDate)}`,
+      sourceKey: `${slot.clientKey}|${week.id}`,
       clientKey: slot.clientKey,
       clientName: slot.clientName,
       weekId: week.id,
       weekLabel: week.label,
       weekStart: toIsoDate(week.start),
       weekEnd: toIsoDate(week.end),
-      estimatedDate: toIsoDate(date),
-      displayValue: status === "Recebido" ? received : status === "Parcial" ? remaining : expected,
-      expected,
-      remaining: status === "Recebido" ? 0 : status === "Parcial" ? remaining : expected,
-      status,
+      estimatedDate: toIsoDate(estimatedDate),
+      displayValue: slot.expected,
+      expected: slot.expected,
+      remaining: slot.expected,
+      status: "Previsto",
       activeMonths: slot.activeMonths,
       confidence: slot.confidence,
       historicalValues: slot.monthValues,
       historicalDays: slot.monthDays,
-      actual,
     });
   });
-  actuals.forEach((actual, key) => {
-    if (usedActualKeys.has(key)) return;
-    const separator = key.lastIndexOf("|");
-    const clientKey = key.slice(0, separator);
-    const weekId = key.slice(separator + 1);
-    const week = weeks.find((item) => item.id === weekId);
+
+  actuals.forEach((actual) => {
+    if (matchedActualKeys.has(actual.key)) return;
+    const week = weeks.find((item) => item.id === actual.weekId);
     if (!week) return;
-    const matching = sourceReceipts(receipts).find((receipt) => {
-      const date = parseIsoDate(receipt.receiptDate);
-      const name = canonicalReceiptClientName(receipt.clientHint || receipt.description);
-      return date && isBetween(date, week.start, week.end) && normalizeKey(name) === clientKey;
-    });
     rows.push({
-      key: `actual|${key}`,
-      sourceKey: `actual|${key}`,
-      clientKey,
-      clientName: matching ? canonicalReceiptClientName(matching.clientHint || matching.description) : clientKey,
-      weekId,
+      key: `actual|${actual.key}`,
+      sourceKey: `actual|${actual.key}`,
+      clientKey: actual.clientKey,
+      clientName: actual.clientName,
+      weekId: week.id,
       weekLabel: week.label,
       weekStart: toIsoDate(week.start),
       weekEnd: toIsoDate(week.end),
@@ -361,6 +443,15 @@ function buildRows(receipts: Receipt[], history: ReturnType<typeof buildHistory>
     });
   });
   return rows;
+}
+
+export function filterForecastRows(rows: ForecastRow[], filters: ForecastFilters) {
+  return rows.filter((row) =>
+    (filters.selectedWeek === "all" || row.weekId === filters.selectedWeek)
+    && (filters.selectedClient === "all" || row.clientKey === filters.selectedClient)
+    && (filters.selectedConfidence === "Todas" || row.confidence === filters.selectedConfidence)
+    && (!filters.onlyPending || row.status !== "Recebido"),
+  );
 }
 
 function applyAdjustments(rows: ForecastRow[], adjustments: ForecastManualAdjustment[], weeks: ForecastWeek[]) {
@@ -460,7 +551,7 @@ function ForecastView({ data }: { data: ImportState }) {
   const [selectedWeek, setSelectedWeek] = useState("all");
   const [selectedClient, setSelectedClient] = useState("all");
   const [selectedConfidence, setSelectedConfidence] = useState<"Todas" | "Alta" | "Média">("Todas");
-  const [scope, setScope] = useState<CardScope>("all");
+  const [onlyPending, setOnlyPending] = useState(false);
   const [detailKey, setDetailKey] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [adjustments, setAdjustments] = useState<ForecastManualAdjustment[]>([]);
@@ -487,13 +578,14 @@ function ForecastView({ data }: { data: ImportState }) {
     return () => { cancelled = true; };
   }, [selectedMonthKey, refreshAdjustments]);
 
-  const baseRows = useMemo(() => buildRows(data.receipts, history, targetMonth, weeks), [data.receipts, history, targetMonth, weeks]);
+  const baseRows = useMemo(() => buildRows(data.receipts, history, weeks), [data.receipts, history, weeks]);
   const rows = useMemo(() => applyAdjustments(baseRows, adjustments, weeks), [baseRows, adjustments, weeks]);
-  const preClientRows = rows.filter((row) =>
-    (selectedWeek === "all" || row.weekId === selectedWeek)
-    && (selectedConfidence === "Todas" || row.confidence === selectedConfidence)
-    && (scope === "all" || (scope === "received" ? Boolean(row.actual) : row.confidence === "Alta" && row.status !== "Recebido")),
-  );
+  const preClientRows = useMemo(() => filterForecastRows(rows, {
+    selectedWeek,
+    selectedClient: "all",
+    selectedConfidence,
+    onlyPending,
+  }), [rows, selectedWeek, selectedConfidence, onlyPending]);
   const clients = useMemo(() => {
     const map = new Map<string, string>();
     preClientRows.forEach((row) => map.set(row.clientKey, row.clientName));
@@ -510,19 +602,29 @@ function ForecastView({ data }: { data: ImportState }) {
     if (selectedClient !== "all" && !clients.some((client) => client.key === selectedClient)) setSelectedClient("all");
   }, [clients, selectedClient]);
 
-  const filteredRows = preClientRows.filter((row) => selectedClient === "all" || row.clientKey === selectedClient);
+  useEffect(() => {
+    document.body.classList.toggle("forecast-only-pending-v16", onlyPending);
+    return () => document.body.classList.remove("forecast-only-pending-v16");
+  }, [onlyPending]);
+
+  const filteredRows = useMemo(() => filterForecastRows(preClientRows, {
+    selectedWeek: "all",
+    selectedClient,
+    selectedConfidence: "Todas",
+    onlyPending: false,
+  }), [preClientRows, selectedClient]);
   const pendingRows = filteredRows.filter((row) => row.status !== "Recebido");
   const receivedRows = filteredRows.filter((row) => row.actual);
   const pendingValue = pendingRows.reduce((sum, row) => sum + row.remaining, 0);
   const receivedValue = receivedRows.reduce((sum, row) => sum + (row.actual?.total ?? 0), 0);
-  const highValue = pendingRows.filter((row) => row.confidence === "Alta").reduce((sum, row) => sum + row.remaining, 0);
   const predictedClients = new Set(pendingRows.map((row) => row.clientKey)).size;
   const weekly = weeks.map((week) => {
-    const scoped = rows.filter((row) =>
-      row.weekId === week.id
-      && (selectedConfidence === "Todas" || row.confidence === selectedConfidence)
-      && (selectedClient === "all" || row.clientKey === selectedClient),
-    );
+    const scoped = filterForecastRows(rows, {
+      selectedWeek: week.id,
+      selectedClient,
+      selectedConfidence,
+      onlyPending,
+    });
     const pending = scoped.filter((row) => row.status !== "Recebido");
     const actual = scoped.filter((row) => row.actual);
     return {
@@ -707,22 +809,21 @@ function ForecastView({ data }: { data: ImportState }) {
       <section className="forecast-filter-v13">
         <div className="forecast-filter-title-v13"><span>Filtros</span><small>Todo o painel usa o mesmo escopo</small></div>
         <label><span>Cliente</span><div><select value={selectedClient} onChange={(event: ChangeEvent<HTMLSelectElement>) => setSelectedClient(event.target.value)}><option value="all">Todos ({clients.length})</option>{clients.map((client) => <option key={client.key} value={client.key}>{client.name}</option>)}</select><ChevronDown size={15} /></div></label>
-        <label><span>Mês previsto</span><div><select value={selectedMonthKey} onChange={(event: ChangeEvent<HTMLSelectElement>) => { setSelectedMonthKey(event.target.value); setSelectedWeek("all"); setSelectedClient("all"); setScope("all"); }}>{monthOptions.map((month) => <option key={monthKey(month)} value={monthKey(month)}>{MONTH_FORMATTER.format(month)}</option>)}</select><ChevronDown size={15} /></div></label>
-        <label><span>Semana</span><div><select value={selectedWeek} onChange={(event: ChangeEvent<HTMLSelectElement>) => { setSelectedWeek(event.target.value); setSelectedClient("all"); setScope("all"); }}><option value="all">Todas as semanas</option>{weeks.map((week) => <option key={week.id} value={week.id}>{week.label}</option>)}</select><ChevronDown size={15} /></div></label>
-        <label><span>Confiança</span><div><select value={selectedConfidence} onChange={(event: ChangeEvent<HTMLSelectElement>) => { setSelectedConfidence(event.target.value as "Todas" | "Alta" | "Média"); setSelectedClient("all"); setScope("all"); }}><option value="Todas">Todas</option><option value="Alta">Alta</option><option value="Média">Média</option></select><ChevronDown size={15} /></div></label>
-        {(selectedClient !== "all" || selectedWeek !== "all" || selectedConfidence !== "Todas" || scope !== "all") ? <button type="button" onClick={() => { setSelectedClient("all"); setSelectedWeek("all"); setSelectedConfidence("Todas"); setScope("all"); }}>Limpar</button> : null}
+        <label><span>Mês previsto</span><div><select value={selectedMonthKey} onChange={(event: ChangeEvent<HTMLSelectElement>) => { setSelectedMonthKey(event.target.value); setSelectedWeek("all"); setSelectedClient("all"); }}>{monthOptions.map((month) => <option key={monthKey(month)} value={monthKey(month)}>{MONTH_FORMATTER.format(month)}</option>)}</select><ChevronDown size={15} /></div></label>
+        <label><span>Semana</span><div><select value={selectedWeek} onChange={(event: ChangeEvent<HTMLSelectElement>) => { setSelectedWeek(event.target.value); setSelectedClient("all"); }}><option value="all">Todas as semanas</option>{weeks.map((week) => <option key={week.id} value={week.id}>{week.label}</option>)}</select><ChevronDown size={15} /></div></label>
+        <label><span>Confiança</span><div><select value={selectedConfidence} onChange={(event: ChangeEvent<HTMLSelectElement>) => { setSelectedConfidence(event.target.value as "Todas" | "Alta" | "Média"); setSelectedClient("all"); }}><option value="Todas">Todas</option><option value="Alta">Alta</option><option value="Média">Média</option></select><ChevronDown size={15} /></div></label>
+        <button type="button" className={`forecast-only-pending-button-v16${onlyPending ? " active" : ""}`} aria-pressed={onlyPending} onClick={() => setOnlyPending((value) => !value)}><Flag size={15} />Somente a receber</button>
+        {(selectedClient !== "all" || selectedWeek !== "all" || selectedConfidence !== "Todas" || onlyPending) ? <button type="button" onClick={() => { setSelectedClient("all"); setSelectedWeek("all"); setSelectedConfidence("Todas"); setOnlyPending(false); }}>Limpar</button> : null}
       </section>
 
       <section className="forecast-kpis-v13">
-        <article className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}><span>A receber no período</span><strong>{currency.format(pendingValue)}</strong><small>{predictedClients} clientes ainda previstos</small></article>
-        <article className={scope === "received" ? "active" : ""} onClick={() => setScope(scope === "received" ? "all" : "received")}><span>Recebido no período</span><strong>{currency.format(receivedValue)}</strong><small>{new Set(receivedRows.map((row) => row.clientKey)).size} clientes com recebimento real</small></article>
-        <article className={scope === "high" ? "active" : ""} onClick={() => setScope(scope === "high" ? "all" : "high")}><span>Alta confiança a receber</span><strong>{currency.format(highValue)}</strong><small>Recorrência nos 3 meses e data estável</small></article>
-        <article><span>Clientes previstos</span><strong>{integer.format(predictedClients)}</strong><small>Inclui ajustes manuais ativos</small></article>
+        <article><span>A receber no período</span><strong>{currency.format(pendingValue)}</strong><small>{predictedClients} clientes ainda previstos</small></article>
+        <article><span>Recebido no período</span><strong>{currency.format(receivedValue)}</strong><small>{new Set(receivedRows.map((row) => row.clientKey)).size} clientes com recebimento real</small></article>
       </section>
 
       <section className="forecast-main-v13">
         <article className="forecast-panel-v13"><div className="forecast-panel-head-v13"><div><h3>Comparativo dos últimos três meses</h3><p>Recebimentos reais dos clientes filtrados</p></div></div><div className="forecast-chart-v13"><ResponsiveContainer width="100%" height="100%"><BarChart data={chart} margin={{ top: 12, right: 8, left: 4, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#e8ebf2" vertical={false} /><XAxis dataKey="month" tickLine={false} axisLine={false} /><YAxis tickFormatter={(value: number | string) => compactCurrency.format(Number(value))} tickLine={false} axisLine={false} width={72} /><Tooltip formatter={(value: number | string) => currency.format(Number(value))} /><Bar dataKey="amount" name="Recebido" fill="#5d72f6" radius={[6, 6, 0, 0]} maxBarSize={56} /></BarChart></ResponsiveContainer></div></article>
-        <article className="forecast-panel-v13"><div className="forecast-panel-head-v13"><div><h3>Semanas de {MONTH_FORMATTER.format(targetMonth)}</h3><p>A última semana continua no mês seguinte</p></div></div><div className="forecast-weeks-v13">{weekly.map((week) => <button key={week.id} type="button" className={selectedWeek === week.id ? "active" : ""} onClick={() => { setSelectedWeek(selectedWeek === week.id ? "all" : week.id); setSelectedClient("all"); setScope("all"); }}><span>{week.label}</span><strong>A receber: {currency.format(week.pending)}</strong><em>Recebido: {currency.format(week.received)}</em><small>{week.predictedClients} previstos · {week.receivedClients} recebidos</small><i>{week.names.length ? week.names.join(" · ") : week.receivedClients ? "Sem previsão pendente · já recebido" : "Sem previsão recorrente"}</i></button>)}</div></article>
+        <article className="forecast-panel-v13"><div className="forecast-panel-head-v13"><div><h3>Semanas de {MONTH_FORMATTER.format(targetMonth)}</h3><p>A última semana continua no mês seguinte</p></div></div><div className="forecast-weeks-v13">{weekly.map((week) => <button key={week.id} type="button" className={selectedWeek === week.id ? "active" : ""} onClick={() => { setSelectedWeek(selectedWeek === week.id ? "all" : week.id); setSelectedClient("all"); }}><span>{week.label}</span><strong>A receber: {currency.format(week.pending)}</strong><em>Recebido: {currency.format(week.received)}</em><small>{week.predictedClients} previstos · {week.receivedClients} recebidos</small><i>{week.names.length ? week.names.join(" · ") : week.receivedClients ? "Sem previsão pendente · já recebido" : "Sem previsão recorrente"}</i></button>)}</div></article>
       </section>
 
       <article className="forecast-panel-v13">
@@ -761,7 +862,7 @@ function ForecastView({ data }: { data: ImportState }) {
       ) : null}
 
       <style jsx global>{`
-        .receipt-forecast-active-v13 .content-area>:not(.receipt-forecast-page-v13){display:none!important}.receipt-forecast-page-v13{display:grid;gap:20px;color:#20263a}.forecast-heading-v13{display:flex;justify-content:space-between;gap:22px;align-items:flex-start}.forecast-heading-v13>div:first-child>span{display:block;color:#5d72f6;font-size:11px;font-weight:800;letter-spacing:.1em;margin-bottom:6px}.forecast-heading-v13 h2{margin:0;font-size:clamp(24px,2.2vw,34px)}.forecast-heading-v13 p{max-width:820px;margin:7px 0 0;color:#788198;line-height:1.55}.forecast-heading-actions-v13{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.forecast-heading-actions-v13 button{display:flex;align-items:center;gap:7px;height:40px;padding:0 13px;border:1px solid #dfe4ee;border-radius:10px;background:#fff;color:#46516a;font-size:11px;font-weight:800;cursor:pointer}.forecast-heading-actions-v13 button:first-child{border-color:#5d72f6;background:#5d72f6;color:#fff}.forecast-heading-actions-v13 b{display:inline-grid;min-width:18px;height:18px;place-items:center;border-radius:999px;background:#eef0ff;color:#5367df;font-size:9px}.forecast-error-v13{display:flex;gap:8px;align-items:center;padding:10px 13px;border:1px solid #f1c7c7;border-radius:10px;background:#fff5f5;color:#9e3535;font-size:11px}.forecast-filter-v13{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:14px;border:1px solid #e3e7f0;border-radius:15px;background:#fff}.forecast-filter-title-v13{display:grid;min-width:170px;margin-right:auto}.forecast-filter-title-v13 span{font-size:12px;font-weight:800}.forecast-filter-title-v13 small{font-size:10px;color:#929aac}.forecast-filter-v13 label{display:grid;gap:5px}.forecast-filter-v13 label>span{font-size:9px;font-weight:800;color:#8b94a8;text-transform:uppercase}.forecast-filter-v13 label>div{display:flex;height:38px;align-items:center;gap:7px;padding:0 10px;border:1px solid #dfe4ee;border-radius:9px}.forecast-filter-v13 select{min-width:155px;border:0;outline:0;background:transparent;color:#374158;font-size:11px}.forecast-filter-v13>button,.forecast-detail-v13 button{height:38px;padding:0 12px;border:1px solid #dfe4ee;border-radius:9px;background:#fff;color:#616b82;font-size:11px;font-weight:800;cursor:pointer}.forecast-kpis-v13{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.forecast-kpis-v13 article{display:grid;min-height:116px;align-content:space-between;padding:16px;border:1px solid #e4e8f1;border-radius:15px;background:#fff;cursor:pointer}.forecast-kpis-v13 article.active{border-color:#5d72f6;background:#f7f8ff}.forecast-kpis-v13 span{color:#737d92;font-size:10px;font-weight:800}.forecast-kpis-v13 strong{font-size:clamp(20px,2vw,27px)}.forecast-kpis-v13 small{color:#9aa2b3;font-size:9px}.forecast-main-v13{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(350px,.9fr);gap:16px}.forecast-panel-v13{overflow:hidden;border:1px solid #e4e8f1;border-radius:16px;background:#fff}.forecast-panel-head-v13{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:17px 19px 13px}.forecast-panel-head-v13 h3{margin:0;font-size:14px}.forecast-panel-head-v13 p{margin:4px 0 0;color:#9199aa;font-size:10px}.forecast-chart-v13{height:285px;padding:0 12px 12px}.forecast-weeks-v13{display:grid;max-height:310px;overflow:auto;border-top:1px solid #edf0f5}.forecast-weeks-v13 button{display:grid;gap:4px;padding:12px 15px;border:0;border-bottom:1px solid #edf0f5;background:#fff;text-align:left;cursor:pointer}.forecast-weeks-v13 button.active{background:#f3f5ff;box-shadow:inset 3px 0 #5d72f6}.forecast-weeks-v13 span{font-size:10px;font-weight:800}.forecast-weeks-v13 strong{font-size:13px}.forecast-weeks-v13 em{color:#16866f;font-size:10px;font-style:normal;font-weight:800}.forecast-weeks-v13 small,.forecast-weeks-v13 i{color:#929aac;font-size:9px;font-style:normal}.forecast-table-v13{overflow-x:auto;border-top:1px solid #edf0f5}.forecast-table-v13 table{width:100%;min-width:1120px;border-collapse:collapse}.forecast-table-v13 th,.forecast-table-v13 td{padding:12px 14px;border-bottom:1px solid #edf0f5;text-align:left;font-size:11px;vertical-align:top}.forecast-table-v13 th{background:#fafbfe;color:#7c869b;font-size:9px;text-transform:uppercase}.forecast-table-v13 th.number,.forecast-table-v13 td.number{text-align:right}.forecast-table-v13 tbody tr{cursor:pointer}.forecast-table-v13 tbody tr:hover{background:#f8f9ff}.forecast-table-v13 td.client{display:grid;min-width:250px;gap:3px}.forecast-table-v13 td.client span{color:#9aa2b3;font-size:9px}.status{display:grid;gap:2px}.status b{display:flex;align-items:center;gap:4px;font-size:10px}.status small{font-size:9px}.status.received b,.status.received small{color:#16866f}.status.partial b,.status.partial small{color:#9b6c08}.status.forecast b{color:#5367df}.status.forecast small{color:#8992a7}.status.confirmed b,.status.confirmed small{color:#2b6f65}.status.manual b,.status.manual small{color:#7a57b5}.confidence{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:800}.confidence.alta{background:#e8f8f3;color:#16866f}.confidence.media{background:#eef0ff;color:#5367df}.confidence.neutral{background:#f1f2f5;color:#7c8392}.row-actions-v13{display:flex;gap:5px}.row-actions-v13 button{display:grid;width:30px;height:30px;place-items:center;border:1px solid #dfe4ee;border-radius:8px;background:#fff;color:#647089;cursor:pointer}.row-actions-v13 button:hover{border-color:#98a6f5;color:#5367df}.row-actions-v13 button.danger:hover{border-color:#e6a7a7;color:#b13c3c}.no-action{color:#b4bac8}.empty-row{padding:28px!important;text-align:center!important;color:#8d95a8!important}.forecast-basis-v13{display:grid;grid-template-columns:1fr 260px;gap:16px;padding:0 19px 18px}.forecast-basis-v13>div{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.forecast-basis-v13>div span,.forecast-basis-v13 aside{display:grid;gap:5px;padding:12px;border:1px solid #e6eaf2;border-radius:10px;background:#fbfcff}.forecast-basis-v13 small,.forecast-basis-v13 em{color:#8f98aa;font-size:9px;font-style:normal}.forecast-basis-v13 b,.forecast-basis-v13 strong{font-size:12px}.forecast-note-v13{display:flex;gap:9px;align-items:flex-start;padding:13px 15px;border:1px solid #dfe4f1;border-radius:12px;background:#f8f9fd;color:#667087}.forecast-note-v13 span{font-size:10px;line-height:1.5}.forecast-empty-v13{display:grid;min-height:430px;place-items:center;align-content:center;gap:10px;border:1px dashed #cfd6e6;border-radius:18px;background:#fff;color:#5d72f6;text-align:center}.forecast-modal-backdrop-v13{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:20px;background:rgba(24,31,49,.38);backdrop-filter:blur(2px)}.forecast-modal-v13{width:min(620px,100%);max-height:min(760px,90vh);overflow:auto;border:1px solid #dfe4ee;border-radius:18px;background:#fff;box-shadow:0 24px 70px rgba(27,35,58,.22)}.modal-head-v13{display:flex;justify-content:space-between;gap:15px;align-items:flex-start;padding:20px;border-bottom:1px solid #edf0f5}.modal-head-v13 span{color:#6879e7;font-size:9px;font-weight:800;letter-spacing:.08em}.modal-head-v13 h3{margin:5px 0 0;font-size:19px}.modal-head-v13>button{display:grid;width:34px;height:34px;place-items:center;border:1px solid #e2e6ef;border-radius:9px;background:#fff;color:#717b91;cursor:pointer}.modal-form-v13{display:grid;gap:14px;padding:20px}.modal-form-v13 p{margin:0;padding:12px;border-radius:10px;background:#f7f8fc;color:#5e687d;font-size:11px;line-height:1.5}.modal-form-v13 label{display:grid;gap:6px}.modal-form-v13 label>span{color:#747e93;font-size:9px;font-weight:800;text-transform:uppercase}.modal-form-v13 input,.modal-form-v13 select,.modal-form-v13 textarea{width:100%;border:1px solid #dfe4ee;border-radius:9px;padding:10px 11px;background:#fff;color:#35405a;font:inherit;font-size:12px;outline:none}.modal-form-v13 input:focus,.modal-form-v13 select:focus,.modal-form-v13 textarea:focus{border-color:#8291ef;box-shadow:0 0 0 3px rgba(93,114,246,.09)}.modal-actions-v13{display:flex;justify-content:flex-end;gap:8px;padding-top:4px}.modal-actions-v13 button{height:39px;padding:0 14px;border:1px solid #dfe4ee;border-radius:9px;background:#fff;color:#5f6980;font-size:11px;font-weight:800;cursor:pointer}.modal-actions-v13 button.primary{border-color:#5d72f6;background:#5d72f6;color:#fff}.adjustments-list-v13{display:grid;padding:10px 20px 20px}.adjustments-list-v13 article{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:13px 0;border-bottom:1px solid #edf0f5}.adjustments-list-v13 article.inactive{opacity:.48}.adjustments-list-v13 article>div:first-child{display:grid;gap:3px}.adjustments-list-v13 strong{font-size:11px}.adjustments-list-v13 span{color:#59647b;font-size:10px}.adjustments-list-v13 small{color:#939aac;font-size:9px}.adjustments-list-v13 button{display:flex;align-items:center;gap:5px;height:32px;padding:0 9px;border:1px solid #dfe4ee;border-radius:8px;background:#fff;color:#59647b;font-size:9px;font-weight:800;cursor:pointer}.adjustments-list-v13 .restored{color:#8f97a7;font-size:9px}.modal-empty-v13{padding:32px 0;text-align:center;color:#8b94a7;font-size:11px}@media(max-width:1100px){.forecast-kpis-v13{grid-template-columns:repeat(2,1fr)}.forecast-main-v13{grid-template-columns:1fr}}@media(max-width:760px){.forecast-heading-v13{display:grid}.forecast-heading-actions-v13{justify-content:flex-start}.forecast-kpis-v13{grid-template-columns:1fr}.forecast-filter-v13 label{width:100%}.forecast-filter-v13 label>div,.forecast-filter-v13 select{width:100%}.forecast-basis-v13{grid-template-columns:1fr}.forecast-basis-v13>div{grid-template-columns:1fr}}
+        .receipt-forecast-active-v13 .content-area>:not(.receipt-forecast-page-v13){display:none!important}.receipt-forecast-page-v13{display:grid;gap:20px;color:#20263a}.forecast-heading-v13{display:flex;justify-content:space-between;gap:22px;align-items:flex-start}.forecast-heading-v13>div:first-child>span{display:block;color:#5d72f6;font-size:11px;font-weight:800;letter-spacing:.1em;margin-bottom:6px}.forecast-heading-v13 h2{margin:0;font-size:clamp(24px,2.2vw,34px)}.forecast-heading-v13 p{max-width:820px;margin:7px 0 0;color:#788198;line-height:1.55}.forecast-heading-actions-v13{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.forecast-heading-actions-v13 button{display:flex;align-items:center;gap:7px;height:40px;padding:0 13px;border:1px solid #dfe4ee;border-radius:10px;background:#fff;color:#46516a;font-size:11px;font-weight:800;cursor:pointer}.forecast-heading-actions-v13 button:first-child{border-color:#5d72f6;background:#5d72f6;color:#fff}.forecast-heading-actions-v13 b{display:inline-grid;min-width:18px;height:18px;place-items:center;border-radius:999px;background:#eef0ff;color:#5367df;font-size:9px}.forecast-error-v13{display:flex;gap:8px;align-items:center;padding:10px 13px;border:1px solid #f1c7c7;border-radius:10px;background:#fff5f5;color:#9e3535;font-size:11px}.forecast-filter-v13{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:14px;border:1px solid #e3e7f0;border-radius:15px;background:#fff}.forecast-filter-title-v13{display:grid;min-width:170px;margin-right:auto}.forecast-filter-title-v13 span{font-size:12px;font-weight:800}.forecast-filter-title-v13 small{font-size:10px;color:#929aac}.forecast-filter-v13 label{display:grid;gap:5px}.forecast-filter-v13 label>span{font-size:9px;font-weight:800;color:#8b94a8;text-transform:uppercase}.forecast-filter-v13 label>div{display:flex;height:38px;align-items:center;gap:7px;padding:0 10px;border:1px solid #dfe4ee;border-radius:9px}.forecast-filter-v13 select{min-width:155px;border:0;outline:0;background:transparent;color:#374158;font-size:11px}.forecast-filter-v13>button,.forecast-detail-v13 button{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:38px;padding:0 12px;border:1px solid #dfe4ee;border-radius:9px;background:#fff;color:#616b82;font-size:11px;font-weight:800;cursor:pointer}.forecast-only-pending-button-v16.active{border-color:rgba(93,114,246,.52);background:#eef1ff;color:#5367df}.forecast-kpis-v13{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.forecast-kpis-v13 article{display:grid;min-height:116px;align-content:space-between;padding:16px;border:1px solid #e4e8f1;border-radius:15px;background:#fff}.forecast-kpis-v13 span{color:#737d92;font-size:10px;font-weight:800}.forecast-kpis-v13 strong{font-size:clamp(20px,2vw,27px)}.forecast-kpis-v13 small{color:#9aa2b3;font-size:9px}.forecast-main-v13{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(350px,.9fr);gap:16px}.forecast-panel-v13{overflow:hidden;border:1px solid #e4e8f1;border-radius:16px;background:#fff}.forecast-panel-head-v13{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:17px 19px 13px}.forecast-panel-head-v13 h3{margin:0;font-size:14px}.forecast-panel-head-v13 p{margin:4px 0 0;color:#9199aa;font-size:10px}.forecast-chart-v13{height:285px;padding:0 12px 12px}.forecast-weeks-v13{display:grid;max-height:310px;overflow:auto;border-top:1px solid #edf0f5}.forecast-weeks-v13 button{display:grid;gap:4px;padding:12px 15px;border:0;border-bottom:1px solid #edf0f5;background:#fff;text-align:left;cursor:pointer}.forecast-weeks-v13 button.active{background:#f3f5ff;box-shadow:inset 3px 0 #5d72f6}.forecast-weeks-v13 span{font-size:10px;font-weight:800}.forecast-weeks-v13 strong{font-size:13px}.forecast-weeks-v13 em{color:#16866f;font-size:10px;font-style:normal;font-weight:800}.forecast-weeks-v13 small,.forecast-weeks-v13 i{color:#929aac;font-size:9px;font-style:normal}.forecast-table-v13{overflow-x:auto;border-top:1px solid #edf0f5}.forecast-table-v13 table{width:100%;min-width:1120px;border-collapse:collapse}.forecast-table-v13 th,.forecast-table-v13 td{padding:12px 14px;border-bottom:1px solid #edf0f5;text-align:left;font-size:11px;vertical-align:top}.forecast-table-v13 th{background:#fafbfe;color:#7c869b;font-size:9px;text-transform:uppercase}.forecast-table-v13 th.number,.forecast-table-v13 td.number{text-align:right}.forecast-table-v13 tbody tr{cursor:pointer}.forecast-table-v13 tbody tr:hover{background:#f8f9ff}.forecast-table-v13 td.client{display:grid;min-width:250px;gap:3px}.forecast-table-v13 td.client span{color:#9aa2b3;font-size:9px}.status{display:grid;gap:2px}.status b{display:flex;align-items:center;gap:4px;font-size:10px}.status small{font-size:9px}.status.received b,.status.received small{color:#16866f}.status.partial b,.status.partial small{color:#9b6c08}.status.forecast b{color:#5367df}.status.forecast small{color:#8992a7}.status.confirmed b,.status.confirmed small{color:#2b6f65}.status.manual b,.status.manual small{color:#7a57b5}.confidence{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:800}.confidence.alta{background:#e8f8f3;color:#16866f}.confidence.media{background:#eef0ff;color:#5367df}.confidence.neutral{background:#f1f2f5;color:#7c8392}.row-actions-v13{display:flex;gap:5px}.row-actions-v13 button{display:grid;width:30px;height:30px;place-items:center;border:1px solid #dfe4ee;border-radius:8px;background:#fff;color:#647089;cursor:pointer}.row-actions-v13 button:hover{border-color:#98a6f5;color:#5367df}.row-actions-v13 button.danger:hover{border-color:#e6a7a7;color:#b13c3c}.no-action{color:#b4bac8}.empty-row{padding:28px!important;text-align:center!important;color:#8d95a8!important}.forecast-basis-v13{display:grid;grid-template-columns:1fr 260px;gap:16px;padding:0 19px 18px}.forecast-basis-v13>div{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.forecast-basis-v13>div span,.forecast-basis-v13 aside{display:grid;gap:5px;padding:12px;border:1px solid #e6eaf2;border-radius:10px;background:#fbfcff}.forecast-basis-v13 small,.forecast-basis-v13 em{color:#8f98aa;font-size:9px;font-style:normal}.forecast-basis-v13 b,.forecast-basis-v13 strong{font-size:12px}.forecast-note-v13{display:flex;gap:9px;align-items:flex-start;padding:13px 15px;border:1px solid #dfe4f1;border-radius:12px;background:#f8f9fd;color:#667087}.forecast-note-v13 span{font-size:10px;line-height:1.5}.forecast-empty-v13{display:grid;min-height:430px;place-items:center;align-content:center;gap:10px;border:1px dashed #cfd6e6;border-radius:18px;background:#fff;color:#5d72f6;text-align:center}.forecast-modal-backdrop-v13{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:20px;background:rgba(24,31,49,.38);backdrop-filter:blur(2px)}.forecast-modal-v13{width:min(620px,100%);max-height:min(760px,90vh);overflow:auto;border:1px solid #dfe4ee;border-radius:18px;background:#fff;box-shadow:0 24px 70px rgba(27,35,58,.22)}.modal-head-v13{display:flex;justify-content:space-between;gap:15px;align-items:flex-start;padding:20px;border-bottom:1px solid #edf0f5}.modal-head-v13 span{color:#6879e7;font-size:9px;font-weight:800;letter-spacing:.08em}.modal-head-v13 h3{margin:5px 0 0;font-size:19px}.modal-head-v13>button{display:grid;width:34px;height:34px;place-items:center;border:1px solid #e2e6ef;border-radius:9px;background:#fff;color:#717b91;cursor:pointer}.modal-form-v13{display:grid;gap:14px;padding:20px}.modal-form-v13 p{margin:0;padding:12px;border-radius:10px;background:#f7f8fc;color:#5e687d;font-size:11px;line-height:1.5}.modal-form-v13 label{display:grid;gap:6px}.modal-form-v13 label>span{color:#747e93;font-size:9px;font-weight:800;text-transform:uppercase}.modal-form-v13 input,.modal-form-v13 select,.modal-form-v13 textarea{width:100%;border:1px solid #dfe4ee;border-radius:9px;padding:10px 11px;background:#fff;color:#35405a;font:inherit;font-size:12px;outline:none}.modal-form-v13 input:focus,.modal-form-v13 select:focus,.modal-form-v13 textarea{border-color:#8291ef;box-shadow:0 0 0 3px rgba(93,114,246,.09)}.modal-actions-v13{display:flex;justify-content:flex-end;gap:8px;padding-top:4px}.modal-actions-v13 button{height:39px;padding:0 14px;border:1px solid #dfe4ee;border-radius:9px;background:#fff;color:#5f6980;font-size:11px;font-weight:800;cursor:pointer}.modal-actions-v13 button.primary{border-color:#5d72f6;background:#5d72f6;color:#fff}.adjustments-list-v13{display:grid;padding:10px 20px 20px}.adjustments-list-v13 article{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:13px 0;border-bottom:1px solid #edf0f5}.adjustments-list-v13 article.inactive{opacity:.48}.adjustments-list-v13 article>div:first-child{display:grid;gap:3px}.adjustments-list-v13 strong{font-size:11px}.adjustments-list-v13 span{color:#59647b;font-size:10px}.adjustments-list-v13 small{color:#939aac;font-size:9px}.adjustments-list-v13 button{display:flex;align-items:center;gap:5px;height:32px;padding:0 9px;border:1px solid #dfe4ee;border-radius:8px;background:#fff;color:#59647b;font-size:9px;font-weight:800;cursor:pointer}.adjustments-list-v13 .restored{color:#8f97a7;font-size:9px}.modal-empty-v13{padding:32px 0;text-align:center;color:#8b94a7;font-size:11px}@media(max-width:1100px){.forecast-main-v13{grid-template-columns:1fr}}@media(max-width:760px){.forecast-heading-v13{display:grid}.forecast-heading-actions-v13{justify-content:flex-start}.forecast-kpis-v13{grid-template-columns:1fr}.forecast-filter-v13 label{width:100%}.forecast-filter-v13 label>div,.forecast-filter-v13 select{width:100%}.forecast-basis-v13{grid-template-columns:1fr}.forecast-basis-v13>div{grid-template-columns:1fr}}
       `}</style>
     </section>
   );

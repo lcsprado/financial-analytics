@@ -2,8 +2,6 @@
 
 import { useEffect, useRef } from "react";
 
-const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-
 function normalize(value: string) {
   return value
     .normalize("NFD")
@@ -11,29 +9,6 @@ function normalize(value: string) {
     .replace(/\s+/g, " ")
     .trim()
     .toUpperCase();
-}
-
-function currencyValue(value: string) {
-  const match = value.match(/R\$\s*-?[\d.]+,\d{2}/i);
-  if (!match) return 0;
-  const parsed = Number(
-    match[0]
-      .replace(/R\$/gi, "")
-      .replace(/\s/g, "")
-      .replace(/\./g, "")
-      .replace(",", "."),
-  );
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function rowReceivedValue(row: HTMLTableRowElement, statusTitle: string) {
-  const valueText = row.querySelector<HTMLElement>("td:nth-child(3)")?.textContent || "";
-  const statusText = row.querySelector<HTMLElement>("td:nth-child(4)")?.textContent || "";
-
-  if (statusTitle.startsWith("RECEBIDO")) return currencyValue(valueText);
-
-  const receivedMatch = statusText.match(/(?:J[AÁ]\s+)?RECEBIDO\s+(R\$\s*[\d.]+,\d{2})/i);
-  return receivedMatch ? currencyValue(receivedMatch[1]) : 0;
 }
 
 function setTextWithRestore(element: Element | null, value: string, restores: Array<() => void>) {
@@ -77,47 +52,6 @@ export default function ReceiptForecastExecutivePrintPolishV17() {
           restores.push(() => note.classList.remove("print-hide-standard-note-v17"));
         });
       }
-
-      const rows = [...document.querySelectorAll<HTMLTableRowElement>(".forecast-table-v13 tbody tr")]
-        .filter((row) => row.style.display !== "none");
-
-      let pendingValue = 0;
-      let receivedValue = 0;
-      let highValue = 0;
-      const pendingClients = new Set<string>();
-      const receivedClients = new Set<string>();
-
-      rows.forEach((row) => {
-        const clientName = row.querySelector<HTMLElement>("td:first-child strong")?.textContent?.trim() || "";
-        const clientKey = normalize(clientName);
-        const statusTitle = normalize(row.querySelector<HTMLElement>("td:nth-child(4) .status b")?.textContent || "");
-        const displayValue = currencyValue(row.querySelector<HTMLElement>("td:nth-child(3)")?.textContent || "");
-        const confidence = normalize(row.querySelector<HTMLElement>("td:nth-child(6)")?.textContent || "");
-        const received = rowReceivedValue(row, statusTitle);
-
-        if (received > 0) {
-          receivedValue += received;
-          if (clientKey) receivedClients.add(clientKey);
-        }
-
-        if (!statusTitle.startsWith("RECEBIDO")) {
-          pendingValue += displayValue;
-          if (clientKey) pendingClients.add(clientKey);
-          if (confidence === "ALTA") highValue += displayValue;
-        }
-      });
-
-      const cards = document.querySelectorAll<HTMLElement>(".forecast-kpis-v13 article");
-      if (cards[0]) {
-        setTextWithRestore(cards[0].querySelector("strong"), currency.format(pendingValue), restores);
-        setTextWithRestore(cards[0].querySelector("small"), `${pendingClients.size} clientes ainda previstos`, restores);
-      }
-      if (cards[1]) {
-        setTextWithRestore(cards[1].querySelector("strong"), currency.format(receivedValue), restores);
-        setTextWithRestore(cards[1].querySelector("small"), `${receivedClients.size} clientes com recebimento real`, restores);
-      }
-      if (cards[2]) setTextWithRestore(cards[2].querySelector("strong"), currency.format(highValue), restores);
-      if (cards[3]) setTextWithRestore(cards[3].querySelector("strong"), String(pendingClients.size), restores);
 
       restoreRef.current = () => {
         while (restores.length) restores.pop()?.();

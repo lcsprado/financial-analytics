@@ -12,19 +12,13 @@ import ReceiptClientIdentityRefresh from "@/components/ReceiptClientIdentityRefr
 import ReceiptClientLinkManager from "@/components/ReceiptClientLinkManager";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
 import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
-import ReceiptForecastAnyReceiptCompletesPredictionV23 from "@/components/ReceiptForecastAnyReceiptCompletesPredictionV23";
 import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastComparativeCleanup";
-import ReceiptForecastCrossWeekFilterFix from "@/components/ReceiptForecastCrossWeekFilterFix";
 import ReceiptForecastExecutivePrintPolishV17 from "@/components/ReceiptForecastExecutivePrintPolishV17";
 import ReceiptForecastFilterLayoutFixV22 from "@/components/ReceiptForecastFilterLayoutFixV22";
-import ReceiptForecastFullWeekSpilloverV25 from "@/components/ReceiptForecastFullWeekSpilloverV25";
 import ReceiptForecastHideWeeksPanelV21 from "@/components/ReceiptForecastHideWeeksPanelV21";
-import ReceiptForecastKpiSimplifier from "@/components/ReceiptForecastKpiSimplifier";
 import ReceiptForecastLogoPrintFixV20 from "@/components/ReceiptForecastLogoPrintFixV20";
-import ReceiptForecastOnlyPendingToggle from "@/components/ReceiptForecastOnlyPendingToggle";
 import ReceiptForecastPrintFinalV19 from "@/components/ReceiptForecastPrintFinalV19";
 import ReceiptForecastPrintRefinementV18 from "@/components/ReceiptForecastPrintRefinementV18";
-import ReceiptForecastReceivedRuleFix from "@/components/ReceiptForecastReceivedRuleFix";
 import ReceiptForecastWeekCardsPolishV15 from "@/components/ReceiptForecastWeekCardsPolishV15";
 import ScopedClientFilterEnhancerV2 from "@/components/ScopedClientFilterEnhancerV2";
 
@@ -143,12 +137,6 @@ export default function PerformanceScopedEnhancers() {
 
       {scope === "forecast" ? (
         <>
-          <ReceiptForecastReceivedRuleFix />
-          <ReceiptForecastCrossWeekFilterFix />
-          <ReceiptForecastAnyReceiptCompletesPredictionV23 />
-          <ReceiptForecastFullWeekSpilloverV25 />
-          <ReceiptForecastKpiSimplifier />
-          <ReceiptForecastOnlyPendingToggle />
           <ReceiptForecastExecutivePrintPolishV17 />
           <ReceiptForecastPrintRefinementV18 />
           <ReceiptForecastComparativeCleanup />
