@@ -54,11 +54,17 @@ export function canonicalClientName(value: string) {
   return cleaned;
 }
 
+export function manualInvoiceClientName(value: string) {
+  const basic = canonicalClientName(value);
+  if (!basic) return "";
+  return invoiceAliasMap.get(normalizeClientText(basic)) || "";
+}
+
 /** Nome canônico exclusivo da base de Emissões/FINR020. */
 export function canonicalInvoiceClientName(value: string) {
   const basic = canonicalClientName(value);
   if (!basic) return "";
-  return invoiceAliasMap.get(normalizeClientText(basic)) || basic;
+  return manualInvoiceClientName(basic) || basic;
 }
 
 export function clientKey(value: string) {
