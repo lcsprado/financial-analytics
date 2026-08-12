@@ -17,9 +17,7 @@ import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastCompa
 import ReceiptForecastExecutivePrintPolishV17 from "@/components/ReceiptForecastExecutivePrintPolishV17";
 import ReceiptForecastFilterLayoutFixV22 from "@/components/ReceiptForecastFilterLayoutFixV22";
 import ReceiptForecastHideWeeksPanelV21 from "@/components/ReceiptForecastHideWeeksPanelV21";
-import ReceiptForecastLogoPrintFixV20 from "@/components/ReceiptForecastLogoPrintFixV20";
 import ReceiptForecastPrintFinalV19 from "@/components/ReceiptForecastPrintFinalV19";
-import ReceiptForecastPrintRefinementV18 from "@/components/ReceiptForecastPrintRefinementV18";
 import ReceiptForecastWeekCardsPolishV15 from "@/components/ReceiptForecastWeekCardsPolishV15";
 import ScopedClientFilterEnhancerV2 from "@/components/ScopedClientFilterEnhancerV2";
 
@@ -140,12 +138,10 @@ export default function PerformanceScopedEnhancers() {
       {scope === "forecast" ? (
         <>
           <ReceiptForecastExecutivePrintPolishV17 />
-          <ReceiptForecastPrintRefinementV18 />
           <ReceiptForecastComparativeCleanup />
           <ReceiptForecastWeekCardsPolishV15 />
           <DashboardVisualPolishV1 />
           <ReceiptForecastPrintFinalV19 />
-          <ReceiptForecastLogoPrintFixV20 />
           <ReceiptForecastHideWeeksPanelV21 />
           <ReceiptForecastFilterLayoutFixV22 />
         </>

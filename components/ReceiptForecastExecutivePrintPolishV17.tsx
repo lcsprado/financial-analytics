@@ -71,29 +71,6 @@ export default function ReceiptForecastExecutivePrintPolishV17() {
   return (
     <style jsx global>{`
       @media print {
-        @page {
-          size: A4 landscape;
-          margin: 7mm 8mm;
-        }
-
-        body.forecast-executive-print-v17 .print-report-header {
-          margin-bottom: 6px !important;
-          padding-bottom: 6px !important;
-          border-bottom-width: 1px !important;
-        }
-
-        body.forecast-executive-print-v17 .print-report-header h1 {
-          margin: 2px 0 !important;
-          font-size: 18px !important;
-          line-height: 1.05 !important;
-        }
-
-        body.forecast-executive-print-v17 .print-report-header p,
-        body.forecast-executive-print-v17 .print-report-header span {
-          font-size: 7px !important;
-          line-height: 1.2 !important;
-        }
-
         body.forecast-executive-print-v17 .forecast-heading-v13,
         body.forecast-executive-print-v17 .forecast-filter-v13,
         body.forecast-executive-print-v17 .forecast-accuracy-v14,

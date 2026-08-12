@@ -1,66 +1,354 @@
+.print-monthly-variation,
+.print-table-summary { display: none; }
+
 @media print {
-  /*
-   * O estilo global de impressão mantém cards curtos inteiros na página.
-   * Em painéis com tabelas longas isso empurrava o painel completo para a
-   * página seguinte, deixando a primeira página praticamente vazia.
-   */
-  body {
-    padding-bottom: 0 !important;
+  @page { size: A4 landscape; margin: 8mm 9mm; }
+
+  html, body {
+    background: #fff !important;
+    color: #1f2633 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
+  body { padding-bottom: 0 !important; }
+  .app-shell { display: block !important; min-height: auto !important; }
+  .sidebar, .sidebar-backdrop, .topbar, .filter-bar, .alert,
+  .print-button-floating, .search-box, .clear-filter, .import-actions,
+  .upload-grid, .privacy-note, .receipt-channel-actions,
+  .receipt-channel-breakdown, .receipt-channel-empty, .receipt-channel-note,
+  .table-note, .pwa-controls, [data-invoice-date-filter],
+  [data-receipt-date-filter], [data-invoice-chart-slot],
+  [data-invoice-summary-slot], .forecast-error-v13 { display: none !important; }
+  .main-content { margin-left: 0 !important; }
+  .content-area { max-width: none !important; padding: 0 !important; }
 
   .print-report-header {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: 43px;
+    margin: 0 0 10px;
+    padding: 0 0 8px;
+    border-bottom: 2px solid #ad1027;
     break-after: avoid-page !important;
     page-break-after: avoid !important;
   }
+  .print-report-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .print-report-brand img {
+    display: block !important;
+    width: 36px !important;
+    height: 36px !important;
+    flex: 0 0 36px;
+    object-fit: contain;
+    object-position: center;
+    mix-blend-mode: multiply;
+  }
+  .print-report-brand > div { min-width: 0; }
+  .print-report-header span {
+    display: block;
+    color: #ad1027;
+    font-size: 7.5px;
+    font-weight: 900;
+    letter-spacing: 1.25px;
+    line-height: 1;
+  }
+  .print-report-header h1 {
+    margin: 2px 0;
+    color: #1f2633;
+    font-size: 18px;
+    line-height: 1.08;
+  }
+  .print-report-header p {
+    margin: 0;
+    color: #667084;
+    font-size: 7.4px;
+    line-height: 1.25;
+  }
+  .print-report-generated-at {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    text-align: right;
+  }
 
+  .panel, .kpi-card, .insight-strip, .client-summary-card,
+  .import-results, .receipt-channel-summary { box-shadow: none !important; }
+  .panel, .kpi-card, .client-summary-card, .receipt-channel-summary {
+    border-color: #d9dee8 !important;
+    background: #fff !important;
+  }
+  .panel, .kpi-card, .insight-strip, .client-summary-card, .import-results {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .panel { padding: 10px 11px !important; border-radius: 8px !important; }
+  .panel-header { margin-bottom: 7px !important; }
+  .panel-header h2, .panel-header h3 { font-size: 13px !important; line-height: 1.2 !important; }
+  .panel-header p { margin-top: 2px !important; font-size: 7.5px !important; line-height: 1.2 !important; }
+  .panel-header[data-report-source-label]::after {
+    padding: 4px 6px !important;
+    border: 0 !important;
+    color: #667084 !important;
+    background: #f1f3f6 !important;
+    font-size: 7px !important;
+  }
+  body[data-print-report="invoices"] .panel-header > div > p { display: none !important; }
+
+  /* Visão geral — página 1: identidade, três KPIs e gráficos principais. */
+  body[data-print-report="overview"] .overview-print-kpis {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    margin: 0 0 8px !important;
+  }
+  body[data-print-report="overview"] .overview-print-kpis > :nth-child(4),
+  body[data-print-report="overview"] .overview-print-kpis > :nth-child(5) { display: none !important; }
+  body[data-print-report="overview"] .overview-print-kpis .kpi-card,
+  body[data-print-report="overview"] .receipt-channel-kpi-slot {
+    min-width: 0 !important;
+    min-height: 82px !important;
+  }
+  body[data-print-report="overview"] .overview-print-kpis .kpi-card {
+    padding: 10px 11px !important;
+    border-radius: 8px !important;
+  }
+  body[data-print-report="overview"] .overview-print-kpis .kpi-card strong {
+    font-size: 16px !important;
+    line-height: 1.1 !important;
+  }
+  body[data-print-report="overview"] .overview-print-kpis .kpi-card p,
+  body[data-print-report="overview"] .overview-print-kpis .kpi-card small { font-size: 7.4px !important; }
+  body[data-print-report="overview"] .receipt-channel-summary {
+    display: flex !important;
+    align-items: center !important;
+    height: 100% !important;
+    min-height: 82px !important;
+    padding: 10px 11px !important;
+    border-radius: 8px !important;
+  }
+  body[data-print-report="overview"] .receipt-channel-heading {
+    display: block !important;
+    width: 100% !important;
+  }
+  body[data-print-report="overview"] .receipt-channel-heading h3 {
+    margin: 4px 0 !important;
+    color: #1f2633 !important;
+    font-size: 16px !important;
+    line-height: 1.1 !important;
+  }
+  body[data-print-report="overview"] .receipt-channel-heading span {
+    color: #ad1027 !important;
+    font-size: 7.5px !important;
+    letter-spacing: .7px !important;
+  }
+  body[data-print-report="overview"] .receipt-channel-heading p {
+    margin: 0 !important;
+    color: #667084 !important;
+    font-size: 7.4px !important;
+  }
+  body[data-print-report="overview"] .overview-print-page-one,
+  body[data-print-report="overview"] .overview-print-page-two {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) !important;
+    gap: 8px !important;
+    margin: 0 !important;
+  }
+  body[data-print-report="overview"] .overview-print-page-one > .panel,
+  body[data-print-report="overview"] .overview-print-page-two > .panel {
+    grid-column: auto !important;
+    min-width: 0 !important;
+  }
+  body[data-print-report="overview"] .overview-print-page-one .chart-box { height: 218px !important; }
+  body[data-print-report="overview"] .overview-print-page-one .pie-layout { min-height: 218px !important; }
+  body[data-print-report="overview"] .overview-print-page-one .pie-chart-box { height: 205px !important; }
+  body[data-print-report="overview"] .monthly-variation-strip {
+    display: none !important;
+  }
+  body[data-print-report="overview"] .print-monthly-variation {
+    display: grid !important;
+    gap: 4px;
+    margin-top: 5px;
+    padding: 5px 6px;
+    border: 1px solid #e1e5ed;
+    border-radius: 6px;
+    background: #f8f9fb;
+  }
+  body[data-print-report="overview"] .print-monthly-variation > div:first-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 6.2px;
+  }
+  body[data-print-report="overview"] .print-monthly-variation > div:first-child span { color: #7e8798; }
+  body[data-print-report="overview"] .print-monthly-variation-grid {
+    display: grid;
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+    gap: 3px;
+  }
+  body[data-print-report="overview"] .print-monthly-variation-grid article {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 3px;
+    min-width: 0;
+    padding: 3px;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 5.6px;
+  }
+  body[data-print-report="overview"] .print-monthly-variation-grid article > strong {
+    grid-column: 1 / -1;
+    color: #596275;
+  }
+  body[data-print-report="overview"] .print-monthly-variation-grid span {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+  }
+  body[data-print-report="overview"] .print-monthly-variation-grid b {
+    display: inline-grid;
+    width: 10px;
+    height: 10px;
+    place-items: center;
+    border-radius: 3px;
+    color: #fff;
+    background: #5d72f6;
+    font-size: 5px;
+  }
+  body[data-print-report="overview"] .print-monthly-variation-grid span:last-child b { background: #20af92; }
+
+  /* Visão geral — página 2: ranking, evolução e insights. */
+  body[data-print-report="overview"] .overview-print-page-two {
+    grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr) !important;
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+  body[data-print-report="overview"] .overview-print-page-two .chart-box,
+  body[data-print-report="overview"] .overview-print-page-two .short-chart { height: 300px !important; }
+  body[data-print-report="overview"] .ranking-list button {
+    min-height: 36px !important;
+    padding: 6px 7px !important;
+    border-radius: 6px !important;
+  }
+  body[data-print-report="overview"] .ranking-list button strong,
+  body[data-print-report="overview"] .ranking-list button b { font-size: 7.8px !important; }
+  body[data-print-report="overview"] .overview-print-insights {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin: 8px 0 0 !important;
+    padding: 8px 10px !important;
+    border: 1px solid #d9dee8 !important;
+    border-radius: 8px !important;
+    background: #f7f8fb !important;
+  }
+  body[data-print-report="overview"] .overview-print-insights strong { font-size: 14px !important; }
+  body[data-print-report="overview"] .overview-print-insights span,
+  body[data-print-report="overview"] .overview-print-insights small {
+    font-size: 7px !important;
+    line-height: 1.25 !important;
+  }
+
+  /* Relatórios tabulares: resumo junto à tabela, cabeçalhos repetidos e linhas inteiras. */
   .panel:has(.table-wrap) {
     break-inside: auto !important;
     page-break-inside: auto !important;
-    padding: 10px !important;
+    padding: 9px !important;
   }
-
   .panel:has(.table-wrap) .panel-header,
+  .panel:has(.table-wrap) .print-table-summary,
   .panel:has(.table-wrap) .table-toolbar {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     break-after: avoid-page !important;
     page-break-after: avoid !important;
   }
-
-  .panel:has(.table-wrap) .panel-header {
-    margin-bottom: 6px !important;
-  }
-
   .panel:has(.table-wrap) .table-toolbar {
-    margin-bottom: 6px !important;
+    display: none !important;
   }
-
+  .print-table-summary {
+    display: flex !important;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+    margin: 0 0 6px;
+  }
+  .print-table-summary span {
+    display: grid;
+    gap: 2px;
+    min-width: 120px;
+    padding: 6px 8px;
+    border: 1px solid #e1e5ed;
+    border-radius: 6px;
+    color: #687286;
+    background: #f8f9fb;
+    font-size: 6.5px;
+    text-align: right;
+  }
+  .print-table-summary strong { color: #20283a; font-size: 9px; }
+  .panel:has(.table-wrap) .table-toolbar > div {
+    width: auto !important;
+    min-width: 0 !important;
+    grid-template-columns: auto auto !important;
+    gap: 16px !important;
+  }
   .panel:has(.table-wrap) .table-wrap,
   .panel:has(.table-wrap) table,
   .panel:has(.table-wrap) tbody {
+    overflow: visible !important;
     break-inside: auto !important;
     page-break-inside: auto !important;
   }
-
   .panel:has(.table-wrap) table {
     width: 100% !important;
     min-width: 0 !important;
     border-collapse: collapse !important;
   }
-
-  .panel:has(.table-wrap) thead {
-    display: table-header-group !important;
-  }
-
+  .panel:has(.table-wrap) thead { display: table-header-group !important; }
   .panel:has(.table-wrap) tr {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
-
   .panel:has(.table-wrap) th,
   .panel:has(.table-wrap) td {
-    padding: 4px 6px !important;
-    font-size: 7.6px !important;
-    line-height: 1.2 !important;
+    padding: 4px 5px !important;
+    font-size: 7.2px !important;
+    line-height: 1.18 !important;
+    vertical-align: middle !important;
   }
+  .panel:has(.table-wrap) th {
+    background: #f0f2f6 !important;
+    color: #4d5668 !important;
+  }
+  .description-cell { min-width: 0 !important; }
+
+  body[data-print-report="clients"] .clients-page { display: block !important; }
+  body[data-print-report="clients"] .receipt-clients-fallback {
+    display: block !important;
+  }
+  body[data-print-report="clients"] .client-summary-card {
+    display: grid !important;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    column-gap: 18px;
+    padding: 10px 12px !important;
+    margin-bottom: 8px !important;
+    border-radius: 8px !important;
+    border: 1px solid #d9dee8 !important;
+    color: #1f2633 !important;
+    background: #f7f8fb !important;
+  }
+  body[data-print-report="clients"] .client-summary-card h2 {
+    margin: 2px 0 !important;
+    font-size: 15px !important;
+  }
+  body[data-print-report="clients"] .client-summary-card strong { font-size: 17px !important; }
+  body[data-print-report="clients"] .client-summary-card span,
+  body[data-print-report="clients"] .client-summary-card small {
+    color: #667084 !important;
+    opacity: 1 !important;
+  }
+  body[data-print-report="clients"] .client-summary-card small { font-size: 7.5px !important; }
+  body[data-print-report="clients"] .receipt-clients-fallback > .panel { margin-top: 8px !important; }
 }
