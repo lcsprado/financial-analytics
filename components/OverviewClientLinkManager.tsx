@@ -4,7 +4,17 @@ import { Link2, Search, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { canonicalInvoiceClientName, normalizeClientText } from "@/lib/clientNames";
+import {
+  INVOICE_CLIENT_LINKS_EVENT,
+  listInvoiceClientLinks,
+  type InvoiceClientLink,
+} from "@/lib/invoiceClientLinks";
 import { canonicalReceiptClientName } from "@/lib/receiptClientNames";
+import {
+  listReceiptClientLinks,
+  RECEIPT_CLIENT_LINKS_EVENT,
+  type ReceiptClientLink,
+} from "@/lib/receiptClientLinks";
 import {
   createOverviewClientGroup,
   deleteOverviewClientGroup,
@@ -17,6 +27,47 @@ import { ANALYSIS_DATA_EVENT, loadAnalysisState } from "@/lib/offlineStorage";
 import type { ImportState } from "@/lib/types";
 
 type NameItem = { name: string; source: "Emissões" | "Recebimentos" };
+type IdentityLink = { group_id: string; canonical_name: string; alias_name: string };
+
+function expandLinkedIdentityKeys(
+  overviewLinks: OverviewClientLink[],
+  invoiceLinks: InvoiceClientLink[],
+  receiptLinks: ReceiptClientLink[],
+) {
+  const linked = new Set(overviewLinks.map((link) => link.alias_key));
+
+  const expandSource = (sourceLinks: IdentityLink[]) => {
+    let changed = false;
+    const groups = new Map<string, Set<string>>();
+
+    sourceLinks.forEach((link) => {
+      const identities = groups.get(link.group_id) ?? new Set<string>();
+      const aliasKey = overviewAliasKey(link.alias_name);
+      const canonicalKey = overviewAliasKey(link.canonical_name);
+      if (aliasKey) identities.add(aliasKey);
+      if (canonicalKey) identities.add(canonicalKey);
+      groups.set(link.group_id, identities);
+    });
+
+    groups.forEach((identities) => {
+      if (![...identities].some((key) => linked.has(key))) return;
+      identities.forEach((key) => {
+        if (linked.has(key)) return;
+        linked.add(key);
+        changed = true;
+      });
+    });
+
+    return changed;
+  };
+
+  let changed = true;
+  while (changed) {
+    changed = expandSource(invoiceLinks) || expandSource(receiptLinks);
+  }
+
+  return linked;
+}
 
 export default function OverviewClientLinkManager() {
   const [target, setTarget] = useState<HTMLElement | null>(null);
@@ -24,6 +75,8 @@ export default function OverviewClientLinkManager() {
   const [data, setData] = useState<ImportState>({ invoices: [], receipts: [] });
   const dataRef = useRef(data);
   const [links, setLinks] = useState<OverviewClientLink[]>([]);
+  const [invoiceLinks, setInvoiceLinks] = useState<InvoiceClientLink[]>([]);
+  const [receiptLinks, setReceiptLinks] = useState<ReceiptClientLink[]>([]);
   const [tab, setTab] = useState<"unlinked" | "linked">("unlinked");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -42,10 +95,17 @@ export default function OverviewClientLinkManager() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([loadAnalysisState(), listOverviewClientLinks()]).then(([stored, nextLinks]) => {
+    void Promise.all([
+      loadAnalysisState(),
+      listOverviewClientLinks(),
+      listInvoiceClientLinks(),
+      listReceiptClientLinks(),
+    ]).then(([stored, nextLinks, nextInvoiceLinks, nextReceiptLinks]) => {
       if (!active) return;
       if (stored) setData(stored);
       setLinks(nextLinks);
+      setInvoiceLinks(nextInvoiceLinks);
+      setReceiptLinks(nextReceiptLinks);
     }).catch(() => setError("Não foi possível carregar os grupos da Visão Geral."));
 
     const onData = (event: Event) => {
@@ -53,12 +113,18 @@ export default function OverviewClientLinkManager() {
       if (detail) setData(detail);
     };
     const onLinks = () => { void listOverviewClientLinks().then(setLinks); };
+    const onInvoiceLinks = () => { void listInvoiceClientLinks().then(setInvoiceLinks); };
+    const onReceiptLinks = () => { void listReceiptClientLinks().then(setReceiptLinks); };
     window.addEventListener(ANALYSIS_DATA_EVENT, onData);
     window.addEventListener(OVERVIEW_CLIENT_LINKS_EVENT, onLinks);
+    window.addEventListener(INVOICE_CLIENT_LINKS_EVENT, onInvoiceLinks);
+    window.addEventListener(RECEIPT_CLIENT_LINKS_EVENT, onReceiptLinks);
     return () => {
       active = false;
       window.removeEventListener(ANALYSIS_DATA_EVENT, onData);
       window.removeEventListener(OVERVIEW_CLIENT_LINKS_EVENT, onLinks);
+      window.removeEventListener(INVOICE_CLIENT_LINKS_EVENT, onInvoiceLinks);
+      window.removeEventListener(RECEIPT_CLIENT_LINKS_EVENT, onReceiptLinks);
     };
   }, []);
 
@@ -86,7 +152,10 @@ export default function OverviewClientLinkManager() {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [data]);
 
-  const linkedKeys = useMemo(() => new Set(links.map((link) => link.alias_key)), [links]);
+  const linkedKeys = useMemo(
+    () => expandLinkedIdentityKeys(links, invoiceLinks, receiptLinks),
+    [links, invoiceLinks, receiptLinks],
+  );
   const unlinked = useMemo(() => names.filter((item) => !linkedKeys.has(overviewAliasKey(item.name))), [names, linkedKeys]);
   const groups = useMemo(() => {
     const map = new Map<string, { id: string; canonical: string; aliases: string[] }>();
