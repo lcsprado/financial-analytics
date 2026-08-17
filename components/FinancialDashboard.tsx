@@ -72,7 +72,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
   { id: "invoices", label: "Emissões", icon: ReceiptText },
   { id: "receipts", label: "Recebimentos", icon: WalletCards },
-  { id: "clients", label: "Clientes", icon: Users },
   { id: "import", label: "Importar dados", icon: UploadCloud },
 ];
 
