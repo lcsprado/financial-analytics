@@ -24,6 +24,7 @@ export type SandboxProfile = {
   role: SandboxRole;
   must_change_password: boolean;
   last_access_at: string | null;
+  refresh_requested_at: string | null;
 };
 
 export type SandboxManagedUser = {
@@ -33,6 +34,7 @@ export type SandboxManagedUser = {
   active: boolean;
   must_change_password: boolean;
   last_access_at: string | null;
+  refresh_requested_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -142,7 +144,7 @@ export async function loadSandboxProfile(session: SandboxSession) {
 export async function checkSandboxAccess(session: SandboxSession) {
   const query = new URLSearchParams({
     user_id: `eq.${session.user.id}`,
-    select: "user_id,display_name,role,must_change_password,last_access_at",
+    select: "user_id,display_name,role,must_change_password,last_access_at,refresh_requested_at",
     limit: "1",
   });
   const response = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?${query.toString()}`, {
@@ -215,6 +217,13 @@ export async function updateSandboxManagedUser(
     method: "PATCH",
     body: JSON.stringify(input),
   }) as Promise<{ user: SandboxManagedUser }>;
+}
+
+export async function requestSandboxDashboardRefresh(session: SandboxSession, email: string) {
+  return adminApi(session, {
+    method: "PATCH",
+    body: JSON.stringify({ email, refreshDashboard: true }),
+  }) as Promise<{ user: SandboxManagedUser; refreshRequestedAt: string }>;
 }
 
 export async function resetSandboxTemporaryPassword(session: SandboxSession, email: string) {
