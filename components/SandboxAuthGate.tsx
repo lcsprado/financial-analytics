@@ -57,6 +57,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [baseInfo, setBaseInfo] = useState<string>("Nenhuma base compartilhada publicada ainda.");
   const lastSyncedFingerprint = useRef<string | null>(null);
+  const lastRefreshRequest = useRef<string | null>(null);
 
   async function hydrateSharedSnapshot(nextSession: SandboxSession) {
     const snapshot = await loadCurrentSandboxSnapshot(nextSession);
@@ -88,6 +89,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     const nextProfile = await loadSandboxProfile(nextSession);
     if (!nextProfile) throw new Error("Seu usuário ainda não foi autorizado neste dashboard de teste.");
 
+    lastRefreshRequest.current = nextProfile.refresh_requested_at ?? null;
     setSession(nextSession);
     setProfile(nextProfile);
     document.documentElement.dataset.sandboxRole = nextProfile.role;
@@ -144,6 +146,13 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
           return;
         }
 
+        const latestRefresh = latest.refresh_requested_at ?? null;
+        if (latestRefresh && latestRefresh !== lastRefreshRequest.current) {
+          lastRefreshRequest.current = latestRefresh;
+          window.location.reload();
+          return;
+        }
+
         if (
           latest.role !== profile.role
           || latest.display_name !== profile.display_name
@@ -193,9 +202,6 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
           const channelPayload = await loadChannelPayload<{ fileName?: string; entries?: unknown[] }>();
           let receiptChannels = Array.isArray(channelPayload?.entries) ? channelPayload.entries : [];
 
-          // Atualizações auxiliares do dashboard podem disparar antes do canal Cielo estar
-          // hidratado no navegador. Quando a mesma base de Recebimentos continua em uso,
-          // preserve o canal já publicado em vez de criar uma nova versão vazia.
           if (!receiptChannels.length && data.receiptFileName) {
             const currentSnapshot = await loadCurrentSandboxSnapshot(session);
             if (
@@ -268,6 +274,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
       await updateSandboxPassword(session, newPassword);
       const nextProfile = await loadSandboxProfile(session);
       if (!nextProfile) throw new Error("Não foi possível revalidar seu acesso.");
+      lastRefreshRequest.current = nextProfile.refresh_requested_at ?? null;
       setProfile(nextProfile);
       document.documentElement.dataset.sandboxRole = nextProfile.role;
       setNewPassword("");
