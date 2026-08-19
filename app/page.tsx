@@ -7,24 +7,29 @@ import PrintButton from "@/components/PrintButton";
 import ReceiptClientIdentityNormalizer from "@/components/ReceiptClientIdentityNormalizer";
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
+import SandboxAnalyticsReady from "@/components/SandboxAnalyticsReady";
 import SandboxAuthGate from "@/components/SandboxAuthGate";
 import SandboxChannelRestore from "@/components/SandboxChannelRestore";
 import SandboxMobileMode from "@/components/SandboxMobileMode";
+import SandboxMobilePolish from "@/components/SandboxMobilePolish";
 
 export default function Home() {
   return (
     <SandboxAuthGate>
-      <SandboxChannelRestore />
-      <SandboxMobileMode />
-      <LegacyDirectorModeCleanup />
-      <PrintButton />
-      <FinancialDashboard />
-      <ReportSourceLabels />
-      <ClientFilterSearchEnhancer />
-      <InvoiceClientCodeNormalizer />
-      <ReceiptClientIdentityNormalizer />
-      <ReceiptForecastEnhancerV13 />
-      <PerformanceScopedEnhancers />
+      <SandboxAnalyticsReady>
+        <SandboxChannelRestore />
+        <SandboxMobileMode />
+        <LegacyDirectorModeCleanup />
+        <PrintButton />
+        <FinancialDashboard />
+        <ReportSourceLabels />
+        <ClientFilterSearchEnhancer />
+        <InvoiceClientCodeNormalizer />
+        <ReceiptClientIdentityNormalizer />
+        <ReceiptForecastEnhancerV13 />
+        <PerformanceScopedEnhancers />
+        <SandboxMobilePolish />
+      </SandboxAnalyticsReady>
     </SandboxAuthGate>
   );
 }
