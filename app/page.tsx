@@ -10,6 +10,7 @@ import ReportSourceLabels from "@/components/ReportSourceLabels";
 import SandboxAnalyticsReady from "@/components/SandboxAnalyticsReady";
 import SandboxAuthGate from "@/components/SandboxAuthGate";
 import SandboxChannelRestore from "@/components/SandboxChannelRestore";
+import SandboxMobileKpiFit from "@/components/SandboxMobileKpiFit";
 import SandboxMobileMode from "@/components/SandboxMobileMode";
 import SandboxMobilePolish from "@/components/SandboxMobilePolish";
 
@@ -29,6 +30,7 @@ export default function Home() {
         <ReceiptForecastEnhancerV13 />
         <PerformanceScopedEnhancers />
         <SandboxMobilePolish />
+        <SandboxMobileKpiFit />
       </SandboxAnalyticsReady>
     </SandboxAuthGate>
   );
