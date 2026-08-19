@@ -62,6 +62,33 @@ export function readSandboxSession() {
   }
 }
 
+function sessionFromPayload(payload: any): SandboxSession {
+  return {
+    access_token: payload.access_token,
+    refresh_token: payload.refresh_token,
+    expires_at: Math.floor(Date.now() / 1000) + Number(payload.expires_in || 3600),
+    user: payload.user,
+  };
+}
+
+export async function signUpSandbox(email: string, password: string) {
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ email, password }),
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload?.error_description || payload?.msg || payload?.message || "Não foi possível criar o acesso.");
+
+  if (payload.access_token && payload.user) {
+    const session = sessionFromPayload(payload);
+    persistSession(session);
+    return { session, needsEmailConfirmation: false };
+  }
+
+  return { session: null, needsEmailConfirmation: true };
+}
+
 export async function signInSandbox(email: string, password: string) {
   const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST",
@@ -71,12 +98,7 @@ export async function signInSandbox(email: string, password: string) {
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error_description || payload?.msg || "Não foi possível entrar.");
 
-  const session: SandboxSession = {
-    access_token: payload.access_token,
-    refresh_token: payload.refresh_token,
-    expires_at: Math.floor(Date.now() / 1000) + Number(payload.expires_in || 3600),
-    user: payload.user,
-  };
+  const session = sessionFromPayload(payload);
   persistSession(session);
   return session;
 }
