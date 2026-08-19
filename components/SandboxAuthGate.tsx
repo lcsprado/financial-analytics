@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
-import { CheckCircle2, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import { CheckCircle2, KeyRound, LogIn, LogOut, ShieldCheck } from "lucide-react";
 import {
   getValidSandboxSession,
   loadCurrentSandboxSnapshot,
@@ -9,6 +9,7 @@ import {
   saveSandboxSnapshot,
   signInSandbox,
   signOutSandbox,
+  signUpSandbox,
   type SandboxProfile,
   type SandboxSession,
 } from "@/lib/dashboardSandbox";
@@ -20,6 +21,8 @@ import {
   setStorageConsent,
 } from "@/lib/offlineStorage";
 import type { ImportState } from "@/lib/types";
+
+const FIRST_ADMIN_EMAIL = "lcsprado4@gmail.com";
 
 function dataFingerprint(data: ImportState) {
   let hash = 2166136261;
@@ -45,9 +48,12 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SandboxSession | null>(null);
   const [profile, setProfile] = useState<SandboxProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<"login" | "first-access">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [baseInfo, setBaseInfo] = useState<string>("Nenhuma base compartilhada publicada ainda.");
   const lastSyncedFingerprint = useRef<string | null>(null);
 
@@ -136,6 +142,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setMessage(null);
     try {
       const nextSession = await signInSandbox(email.trim(), password);
       await bootstrap(nextSession);
@@ -150,21 +157,80 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     }
   }
 
+  async function handleFirstAccess(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setMessage(null);
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail !== FIRST_ADMIN_EMAIL) {
+      setError(`Neste primeiro teste, o acesso inicial autorizado é ${FIRST_ADMIN_EMAIL}.`);
+      return;
+    }
+    if (password.length < 8) {
+      setError("Escolha uma senha com pelo menos 8 caracteres.");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError("As duas senhas precisam ser iguais.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await signUpSandbox(cleanEmail, password);
+      if (result.session) {
+        await bootstrap(result.session);
+      } else {
+        setMode("login");
+        setPasswordConfirm("");
+        setMessage("Acesso criado. Confira o e-mail para confirmar o cadastro e depois entre com a senha que você acabou de escolher.");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível criar o acesso.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function switchMode(nextMode: "login" | "first-access") {
+    setMode(nextMode);
+    setError(null);
+    setMessage(null);
+    setPassword("");
+    setPasswordConfirm("");
+    if (nextMode === "first-access") setEmail(FIRST_ADMIN_EMAIL);
+  }
+
   if (loading && !session) {
     return <main className="sandbox-login-shell"><div className="sandbox-login-card"><ShieldCheck size={34} /><h1>Abrindo ambiente de teste...</h1></div><SandboxStyles /></main>;
   }
 
   if (!session || !profile) {
+    const isFirstAccess = mode === "first-access";
     return (
       <main className="sandbox-login-shell">
-        <form className="sandbox-login-card" onSubmit={handleLogin}>
+        <form className="sandbox-login-card" onSubmit={isFirstAccess ? handleFirstAccess : handleLogin}>
           <span className="sandbox-badge"><ShieldCheck size={15} /> AMBIENTE DE TESTE</span>
-          <h1>Financial Analytics</h1>
-          <p>Entre para acessar a base compartilhada de testes. O dashboard de produção não é afetado por este ambiente.</p>
-          <label><span>E-mail</span><input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-          <label><span>Senha</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+          <h1>{isFirstAccess ? "Criar acesso" : "Financial Analytics"}</h1>
+          <p>
+            {isFirstAccess
+              ? "Crie uma senha exclusiva para o Dashboard. Ela não é a senha da sua conta do Supabase."
+              : "Entre para acessar a base compartilhada de testes. O dashboard de produção não é afetado por este ambiente."}
+          </p>
+          <label><span>E-mail</span><input type="email" autoComplete="username" value={email} readOnly={isFirstAccess} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label><span>{isFirstAccess ? "Criar senha" : "Senha"}</span><input type="password" minLength={isFirstAccess ? 8 : undefined} autoComplete={isFirstAccess ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+          {isFirstAccess && (
+            <label><span>Confirmar senha</span><input type="password" minLength={8} autoComplete="new-password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} required /></label>
+          )}
+          {message && <div className="sandbox-success">{message}</div>}
           {error && <div className="sandbox-error">{error}</div>}
-          <button type="submit" disabled={loading}><LogIn size={17} /> {loading ? "Entrando..." : "Entrar"}</button>
+          <button type="submit" disabled={loading}>
+            {isFirstAccess ? <KeyRound size={17} /> : <LogIn size={17} />}
+            {loading ? "Aguarde..." : isFirstAccess ? "Criar meu acesso" : "Entrar"}
+          </button>
+          <button className="sandbox-link-button" type="button" onClick={() => switchMode(isFirstAccess ? "login" : "first-access")}>
+            {isFirstAccess ? "Já tenho acesso" : "Primeiro acesso"}
+          </button>
         </form>
         <SandboxStyles />
       </main>
@@ -197,9 +263,12 @@ function SandboxStyles() {
     .sandbox-login-card p { margin:0; color:#687089; line-height:1.55; }
     .sandbox-login-card label { display:grid; gap:7px; font-size:13px; font-weight:700; }
     .sandbox-login-card input { min-height:44px; border:1px solid #d8deeb; border-radius:11px; padding:0 13px; font:inherit; }
+    .sandbox-login-card input[readonly] { background:#f7f8fc; color:#59627a; }
     .sandbox-login-card button { min-height:44px; border:0; border-radius:11px; background:#5269e8; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; }
+    .sandbox-login-card .sandbox-link-button { min-height:auto; background:transparent; color:#5269e8; padding:4px; font-weight:750; }
     .sandbox-badge { width:max-content; display:flex; align-items:center; gap:6px; font-size:11px; font-weight:900; letter-spacing:.08em; color:#5269e8; background:#eef1ff; border-radius:999px; padding:7px 10px; }
     .sandbox-error { padding:10px 12px; border-radius:10px; background:#fff0f1; color:#b42332; font-size:13px; }
+    .sandbox-success { padding:10px 12px; border-radius:10px; background:#eefaf4; color:#18794e; font-size:13px; }
     .sandbox-test-banner { position:relative; z-index:1000; min-height:40px; padding:7px 18px; background:#171d2d; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:14px; font-size:12px; }
     .sandbox-test-banner > div { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .sandbox-test-banner button { border:1px solid rgba(255,255,255,.22); background:transparent; color:#fff; border-radius:8px; padding:6px 9px; display:flex; gap:6px; align-items:center; cursor:pointer; }
