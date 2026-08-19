@@ -5,6 +5,7 @@ import ClientFilterInteractionFix from "@/components/ClientFilterInteractionFix"
 import DashboardKpiCleanup from "@/components/DashboardKpiCleanup";
 import DashboardVisualControls from "@/components/DashboardVisualControls";
 import DashboardVisualPolishV1 from "@/components/DashboardVisualPolishV1";
+import ForecastAdjustmentAuthorEnhancer from "@/components/ForecastAdjustmentAuthorEnhancer";
 import InvoiceAnalyticsEnhancer from "@/components/InvoiceAnalyticsEnhancer";
 import InvoiceClientLinkManager from "@/components/InvoiceClientLinkManager";
 import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
@@ -60,6 +61,7 @@ function scopeFromButton(button: HTMLButtonElement): Scope | null {
 
 export default function PerformanceScopedEnhancers() {
   const [scope, setScope] = useState<Scope>("overview");
+  const [invoiceEnhancersReady, setInvoiceEnhancersReady] = useState(false);
 
   useEffect(() => {
     let scheduled: number | null = null;
@@ -102,6 +104,26 @@ export default function PerformanceScopedEnhancers() {
     };
   }, []);
 
+  // Emissões já monta a tabela principal com até 500 linhas. Deixa o navegador
+  // pintar essa troca primeiro e só depois monta gráfico, vínculo e filtro de datas.
+  useEffect(() => {
+    if (scope !== "invoices") {
+      setInvoiceEnhancersReady(false);
+      return;
+    }
+
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => setInvoiceEnhancersReady(true));
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [scope]);
+
   const standardView = scope !== "forecast" && scope !== "import";
 
   return (
@@ -121,7 +143,7 @@ export default function PerformanceScopedEnhancers() {
         </>
       ) : null}
 
-      {scope === "invoices" ? (
+      {scope === "invoices" && invoiceEnhancersReady ? (
         <>
           <InvoiceClientLinkManager />
           <InvoiceDateRangeFilter />
@@ -141,6 +163,7 @@ export default function PerformanceScopedEnhancers() {
 
       {scope === "forecast" ? (
         <>
+          <ForecastAdjustmentAuthorEnhancer />
           <ReceiptForecastExecutivePrintPolishV17 />
           <ReceiptForecastComparativeCleanup />
           <ReceiptForecastWeekCardsPolishV15 />
