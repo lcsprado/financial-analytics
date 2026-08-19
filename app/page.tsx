@@ -9,11 +9,13 @@ import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13"
 import ReportSourceLabels from "@/components/ReportSourceLabels";
 import SandboxAuthGate from "@/components/SandboxAuthGate";
 import SandboxChannelRestore from "@/components/SandboxChannelRestore";
+import SandboxMobileMode from "@/components/SandboxMobileMode";
 
 export default function Home() {
   return (
     <SandboxAuthGate>
       <SandboxChannelRestore />
+      <SandboxMobileMode />
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
