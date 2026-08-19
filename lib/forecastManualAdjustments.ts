@@ -1,3 +1,5 @@
+import { getValidSandboxSession } from "@/lib/dashboardSandbox";
+
 export type ForecastAdjustmentType = "exclude" | "move" | "confirm" | "manual_add";
 
 export type ForecastManualAdjustment = {
@@ -14,22 +16,27 @@ export type ForecastManualAdjustment = {
   manual_date: string | null;
   note: string | null;
   active: boolean;
+  created_by: string | null;
+  created_by_name: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export type NewForecastManualAdjustment = Omit<
   ForecastManualAdjustment,
-  "id" | "active" | "created_at" | "updated_at"
+  "id" | "active" | "created_by" | "created_by_name" | "created_at" | "updated_at"
 >;
 
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL";
 const TABLE = "forecast_manual_adjustments";
 
-function headers(prefer?: string) {
+async function headers(prefer?: string) {
+  const session = await getValidSandboxSession();
+  if (!session) throw new Error("Sua sessão expirou. Entre novamente.");
   return {
     apikey: SUPABASE_KEY,
+    Authorization: `Bearer ${session.access_token}`,
     "Content-Type": "application/json",
     ...(prefer ? { Prefer: prefer } : {}),
   };
@@ -47,7 +54,7 @@ export async function listForecastAdjustments(monthKey: string) {
     order: "created_at.asc",
   });
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?${query.toString()}`, {
-    headers: headers(),
+    headers: await headers(),
     cache: "no-store",
   });
   if (!response.ok) await parseError(response);
@@ -64,7 +71,7 @@ async function deactivatePrevious(adjustment: NewForecastManualAdjustment) {
   });
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?${query.toString()}`, {
     method: "PATCH",
-    headers: headers(),
+    headers: await headers(),
     body: JSON.stringify({ active: false, updated_at: new Date().toISOString() }),
   });
   if (!response.ok) await parseError(response);
@@ -74,7 +81,7 @@ export async function createForecastAdjustment(adjustment: NewForecastManualAdju
   await deactivatePrevious(adjustment);
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
     method: "POST",
-    headers: headers("return=representation"),
+    headers: await headers("return=representation"),
     body: JSON.stringify({ ...adjustment, active: true }),
   });
   if (!response.ok) await parseError(response);
@@ -86,7 +93,7 @@ export async function restoreForecastAdjustment(id: string) {
   const query = new URLSearchParams({ id: `eq.${id}` });
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?${query.toString()}`, {
     method: "PATCH",
-    headers: headers(),
+    headers: await headers(),
     body: JSON.stringify({ active: false, updated_at: new Date().toISOString() }),
   });
   if (!response.ok) await parseError(response);
