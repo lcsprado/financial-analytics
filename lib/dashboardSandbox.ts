@@ -22,6 +22,19 @@ export type SandboxProfile = {
   user_id: string;
   display_name: string | null;
   role: SandboxRole;
+  must_change_password: boolean;
+  last_access_at: string | null;
+};
+
+export type SandboxManagedUser = {
+  email: string;
+  display_name: string;
+  role: SandboxRole;
+  active: boolean;
+  must_change_password: boolean;
+  last_access_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SandboxSnapshot = {
@@ -71,24 +84,6 @@ function sessionFromPayload(payload: any): SandboxSession {
   };
 }
 
-export async function signUpSandbox(email: string, password: string) {
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify({ email, password }),
-  });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload?.error_description || payload?.msg || payload?.message || "Não foi possível criar o acesso.");
-
-  if (payload.access_token && payload.user) {
-    const session = sessionFromPayload(payload);
-    persistSession(session);
-    return { session, needsEmailConfirmation: false };
-  }
-
-  return { session: null, needsEmailConfirmation: true };
-}
-
 export async function signInSandbox(email: string, password: string) {
   const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST",
@@ -133,13 +128,78 @@ export async function getValidSandboxSession() {
 }
 
 export async function loadSandboxProfile(session: SandboxSession) {
-  const response = await fetch(
-    `${SUPABASE_URL}/rest/v1/dashboard_test_profiles?user_id=eq.${encodeURIComponent(session.user.id)}&select=user_id,display_name,role&limit=1`,
-    { headers: headers(session.access_token) },
-  );
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dashboard_test_mark_access`, {
+    method: "POST",
+    headers: headers(session.access_token),
+    body: "{}",
+    cache: "no-store",
+  });
   if (!response.ok) throw new Error("Usuário autenticado, mas sem acesso ao sandbox.");
   const rows = await response.json() as SandboxProfile[];
   return rows[0] ?? null;
+}
+
+export async function updateSandboxPassword(session: SandboxSession, password: string) {
+  if (password.length < 8) throw new Error("A nova senha precisa ter pelo menos 8 caracteres.");
+
+  const passwordResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "PUT",
+    headers: headers(session.access_token),
+    body: JSON.stringify({ password }),
+  });
+  const passwordPayload = await passwordResponse.json().catch(() => null);
+  if (!passwordResponse.ok) {
+    throw new Error(passwordPayload?.msg || passwordPayload?.message || "Não foi possível alterar a senha.");
+  }
+
+  const finishResponse = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dashboard_test_finish_password_change`, {
+    method: "POST",
+    headers: headers(session.access_token),
+    body: "{}",
+  });
+  if (!finishResponse.ok) {
+    throw new Error("A senha foi alterada, mas não foi possível concluir o primeiro acesso. Entre novamente.");
+  }
+}
+
+async function adminApi(session: SandboxSession, init?: RequestInit) {
+  const response = await fetch("/api/dashboard-test/users", {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+      ...(init?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || "Não foi possível concluir a operação de usuários.");
+  return payload;
+}
+
+export async function listSandboxUsers(session: SandboxSession) {
+  const payload = await adminApi(session);
+  return (payload.users ?? []) as SandboxManagedUser[];
+}
+
+export async function createSandboxUser(
+  session: SandboxSession,
+  input: { displayName: string; email: string; role: SandboxRole },
+) {
+  return adminApi(session, {
+    method: "POST",
+    body: JSON.stringify(input),
+  }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string }>;
+}
+
+export async function updateSandboxManagedUser(
+  session: SandboxSession,
+  input: { email: string; role?: SandboxRole; active?: boolean },
+) {
+  return adminApi(session, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  }) as Promise<{ user: SandboxManagedUser }>;
 }
 
 export async function loadCurrentSandboxSnapshot(session: SandboxSession) {
