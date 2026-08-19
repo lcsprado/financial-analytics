@@ -8,10 +8,12 @@ import ReceiptClientIdentityNormalizer from "@/components/ReceiptClientIdentityN
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
 import SandboxAuthGate from "@/components/SandboxAuthGate";
+import SandboxChannelRestore from "@/components/SandboxChannelRestore";
 
 export default function Home() {
   return (
     <SandboxAuthGate>
+      <SandboxChannelRestore />
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
