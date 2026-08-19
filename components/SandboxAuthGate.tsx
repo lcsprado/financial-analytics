@@ -1,21 +1,45 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { CheckCircle2, LogIn, LogOut, ShieldCheck } from "lucide-react";
 import {
   getValidSandboxSession,
   loadCurrentSandboxSnapshot,
   loadSandboxProfile,
+  saveSandboxSnapshot,
   signInSandbox,
   signOutSandbox,
   type SandboxProfile,
   type SandboxSession,
 } from "@/lib/dashboardSandbox";
 import {
+  ANALYSIS_DATA_EVENT,
+  loadChannelPayload,
   saveAnalysisState,
   saveChannelPayload,
   setStorageConsent,
 } from "@/lib/offlineStorage";
+import type { ImportState } from "@/lib/types";
+
+function dataFingerprint(data: ImportState) {
+  let hash = 2166136261;
+  const add = (value: unknown) => {
+    const text = String(value ?? "");
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+  };
+  add(data.invoiceFileName);
+  add(data.receiptFileName);
+  data.invoices.forEach((item) => {
+    add(item.id); add(item.invoiceNumber); add(item.grossValue); add(item.netValue);
+  });
+  data.receipts.forEach((item) => {
+    add(item.id); add(item.receiptDate); add(item.amount); add(item.bank);
+  });
+  return `${data.invoices.length}:${data.receipts.length}:${hash >>> 0}`;
+}
 
 export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SandboxSession | null>(null);
@@ -25,6 +49,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [baseInfo, setBaseInfo] = useState<string>("Nenhuma base compartilhada publicada ainda.");
+  const lastSyncedFingerprint = useRef<string | null>(null);
 
   async function bootstrap(nextSession: SandboxSession) {
     const nextProfile = await loadSandboxProfile(nextSession);
@@ -32,14 +57,16 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
 
     const snapshot = await loadCurrentSandboxSnapshot(nextSession);
     if (snapshot) {
+      const remoteData: ImportState = {
+        invoices: snapshot.invoices,
+        receipts: snapshot.receipts,
+        invoiceFileName: snapshot.invoice_file_name ?? undefined,
+        receiptFileName: snapshot.receipt_file_name ?? undefined,
+      };
+      lastSyncedFingerprint.current = dataFingerprint(remoteData);
       setStorageConsent(true);
       await Promise.all([
-        saveAnalysisState({
-          invoices: snapshot.invoices,
-          receipts: snapshot.receipts,
-          invoiceFileName: snapshot.invoice_file_name ?? undefined,
-          receiptFileName: snapshot.receipt_file_name ?? undefined,
-        }),
+        saveAnalysisState(remoteData),
         saveChannelPayload({ entries: snapshot.receipt_channels }),
       ]);
       const when = new Date(snapshot.created_at).toLocaleString("pt-BR");
@@ -47,6 +74,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     }
     setSession(nextSession);
     setProfile(nextProfile);
+    document.documentElement.dataset.sandboxRole = nextProfile.role;
   }
 
   useEffect(() => {
@@ -68,6 +96,42 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    if (!session || !profile || profile.role === "viewer") return;
+
+    const handleAnalysisUpdate = (event: Event) => {
+      const data = (event as CustomEvent<ImportState>).detail;
+      if (!data || (!data.invoices.length && !data.receipts.length)) return;
+      if (data.invoiceFileName?.includes("demonstração") || data.receiptFileName?.includes("demonstração")) return;
+
+      const fingerprint = dataFingerprint(data);
+      if (fingerprint === lastSyncedFingerprint.current) return;
+      lastSyncedFingerprint.current = fingerprint;
+
+      void (async () => {
+        try {
+          const channels = await loadChannelPayload<{ entries?: unknown[] }>();
+          await saveSandboxSnapshot({
+            session,
+            profile,
+            data,
+            receiptChannels: channels?.entries ?? [],
+            note: "Atualização publicada pelo ambiente de teste.",
+          });
+          const when = new Date().toLocaleString("pt-BR");
+          setBaseInfo(`Base compartilhada: ${when} • ${profile.display_name ?? session.user.email ?? "usuário"}`);
+          setError(null);
+        } catch (caught) {
+          lastSyncedFingerprint.current = null;
+          setError(caught instanceof Error ? caught.message : "Não foi possível publicar a base compartilhada.");
+        }
+      })();
+    };
+
+    window.addEventListener(ANALYSIS_DATA_EVENT, handleAnalysisUpdate);
+    return () => window.removeEventListener(ANALYSIS_DATA_EVENT, handleAnalysisUpdate);
+  }, [session, profile]);
+
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -87,7 +151,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   }
 
   if (loading && !session) {
-    return <main className="sandbox-login-shell"><div className="sandbox-login-card"><ShieldCheck size={34} /><h1>Abrindo ambiente de teste...</h1></div></main>;
+    return <main className="sandbox-login-shell"><div className="sandbox-login-card"><ShieldCheck size={34} /><h1>Abrindo ambiente de teste...</h1></div><SandboxStyles /></main>;
   }
 
   if (!session || !profile) {
@@ -110,7 +174,13 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="sandbox-test-banner">
-        <div><CheckCircle2 size={16} /><strong>TESTE</strong><span>{baseInfo}</span><span>Perfil: {profile.role}</span></div>
+        <div>
+          <CheckCircle2 size={16} />
+          <strong>TESTE</strong>
+          <span>{baseInfo}</span>
+          <span>Perfil: {profile.role}</span>
+          {error && <span className="sandbox-banner-error">⚠ {error}</span>}
+        </div>
         <button type="button" onClick={() => { signOutSandbox(); window.location.reload(); }}><LogOut size={15} /> Sair</button>
       </div>
       {children}
@@ -133,6 +203,7 @@ function SandboxStyles() {
     .sandbox-test-banner { position:relative; z-index:1000; min-height:40px; padding:7px 18px; background:#171d2d; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:14px; font-size:12px; }
     .sandbox-test-banner > div { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .sandbox-test-banner button { border:1px solid rgba(255,255,255,.22); background:transparent; color:#fff; border-radius:8px; padding:6px 9px; display:flex; gap:6px; align-items:center; cursor:pointer; }
-    @media(max-width:640px){ .sandbox-test-banner { align-items:flex-start; } .sandbox-test-banner span { display:none; } }
+    .sandbox-banner-error { color:#ffd1d5; font-weight:700; }
+    @media(max-width:640px){ .sandbox-test-banner { align-items:flex-start; } .sandbox-test-banner span:not(.sandbox-banner-error) { display:none; } }
   `}</style>;
 }
