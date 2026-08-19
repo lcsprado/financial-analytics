@@ -202,6 +202,13 @@ export async function updateSandboxManagedUser(
   }) as Promise<{ user: SandboxManagedUser }>;
 }
 
+export async function resetSandboxTemporaryPassword(session: SandboxSession, email: string) {
+  return adminApi(session, {
+    method: "PATCH",
+    body: JSON.stringify({ email, resetTemporaryPassword: true }),
+  }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string }>;
+}
+
 export async function loadCurrentSandboxSnapshot(session: SandboxSession) {
   const response = await fetch(
     `${SUPABASE_URL}/rest/v1/dashboard_test_current_snapshot?select=*&limit=1`,
