@@ -74,7 +74,10 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     setStorageConsent(true);
     await Promise.all([
       saveAnalysisState(remoteData),
-      saveChannelPayload({ entries: snapshot.receipt_channels }),
+      saveChannelPayload({
+        fileName: snapshot.receipt_file_name ?? "Base compartilhada",
+        entries: Array.isArray(snapshot.receipt_channels) ? snapshot.receipt_channels : [],
+      }),
     ]);
     const when = new Date(snapshot.created_at).toLocaleString("pt-BR");
     setBaseInfo(`Base compartilhada: ${when}${snapshot.uploaded_by_name ? ` • ${snapshot.uploaded_by_name}` : ""}`);
@@ -88,7 +91,6 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     setProfile(nextProfile);
     document.documentElement.dataset.sandboxRole = nextProfile.role;
 
-    // Nenhum dado financeiro é hidratado antes da troca da senha temporária.
     if (nextProfile.must_change_password) {
       setBaseInfo("Primeiro acesso pendente: altere a senha temporária.");
       return;
@@ -132,12 +134,32 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
 
       void (async () => {
         try {
-          const channels = await loadChannelPayload<{ entries?: unknown[] }>();
+          const channelPayload = await loadChannelPayload<{ fileName?: string; entries?: unknown[] }>();
+          let receiptChannels = Array.isArray(channelPayload?.entries) ? channelPayload.entries : [];
+
+          // Atualizações auxiliares do dashboard podem disparar antes do canal Cielo estar
+          // hidratado no navegador. Quando a mesma base de Recebimentos continua em uso,
+          // preserve o canal já publicado em vez de criar uma nova versão vazia.
+          if (!receiptChannels.length && data.receiptFileName) {
+            const currentSnapshot = await loadCurrentSandboxSnapshot(session);
+            if (
+              currentSnapshot?.receipt_file_name === data.receiptFileName
+              && Array.isArray(currentSnapshot.receipt_channels)
+              && currentSnapshot.receipt_channels.length
+            ) {
+              receiptChannels = currentSnapshot.receipt_channels;
+              await saveChannelPayload({
+                fileName: currentSnapshot.receipt_file_name ?? "Base compartilhada",
+                entries: receiptChannels,
+              });
+            }
+          }
+
           await saveSandboxSnapshot({
             session,
             profile,
             data,
-            receiptChannels: channels?.entries ?? [],
+            receiptChannels,
             note: "Atualização publicada pelo ambiente de teste.",
           });
           const when = new Date().toLocaleString("pt-BR");
