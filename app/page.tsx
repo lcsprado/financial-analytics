@@ -7,10 +7,11 @@ import PrintButton from "@/components/PrintButton";
 import ReceiptClientIdentityNormalizer from "@/components/ReceiptClientIdentityNormalizer";
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
+import SandboxAuthGate from "@/components/SandboxAuthGate";
 
 export default function Home() {
   return (
-    <>
+    <SandboxAuthGate>
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
@@ -20,6 +21,6 @@ export default function Home() {
       <ReceiptClientIdentityNormalizer />
       <ReceiptForecastEnhancerV13 />
       <PerformanceScopedEnhancers />
-    </>
+    </SandboxAuthGate>
   );
 }
