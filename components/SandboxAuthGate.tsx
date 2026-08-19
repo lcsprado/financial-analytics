@@ -208,7 +208,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     window.location.reload();
   }
 
-  if (loading && !session) {
+  if (loading) {
     return <main className="sandbox-login-shell"><div className="sandbox-login-card"><ShieldCheck size={34} /><h1>Abrindo ambiente de teste...</h1></div><SandboxStyles /></main>;
   }
 
