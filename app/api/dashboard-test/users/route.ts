@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL";
+const PROTECTED_OWNER_EMAIL = "lcsprado4@gmail.com";
 
 type SandboxRole = "admin" | "updater" | "viewer";
 type ManagedUser = {
@@ -12,6 +13,7 @@ type ManagedUser = {
   active: boolean;
   must_change_password: boolean;
   last_access_at: string | null;
+  refresh_requested_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -105,6 +107,7 @@ async function syncProfile(user: ManagedUser, authUserId: string, key: string) {
         role: user.role,
         must_change_password: user.must_change_password,
         last_access_at: user.last_access_at,
+        refresh_requested_at: user.refresh_requested_at,
       }),
     });
   } else {
@@ -122,7 +125,7 @@ export async function GET(request: NextRequest) {
   if ("failure" in auth) return error(auth.failure, auth.status);
 
   const response = await fetch(
-    `${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?select=email,display_name,role,active,must_change_password,last_access_at,created_at,updated_at&order=display_name.asc`,
+    `${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?select=email,display_name,role,active,must_change_password,last_access_at,refresh_requested_at,created_at,updated_at&order=display_name.asc`,
     { headers: serviceHeaders(key), cache: "no-store" },
   );
   if (!response.ok) return error("Não foi possível listar os usuários do Dashboard.", 500);
@@ -185,10 +188,20 @@ export async function PATCH(request: NextRequest) {
     role?: SandboxRole;
     active?: boolean;
     resetTemporaryPassword?: boolean;
+    refreshDashboard?: boolean;
   } | null;
   const email = body?.email?.trim().toLowerCase() ?? "";
   if (!email) return error("Usuário não informado.", 400);
   if (body?.role !== undefined && !VALID_ROLES.has(body.role)) return error("Perfil inválido.", 400);
+
+  if (email === PROTECTED_OWNER_EMAIL && (
+    body?.active !== undefined
+    || body?.role !== undefined
+    || body?.resetTemporaryPassword
+    || body?.refreshDashboard
+  )) {
+    return error("O acesso principal do proprietário é protegido e não pode ser alterado por outros administradores.", 403);
+  }
 
   const ownEmail = auth.user.email?.toLowerCase() ?? "";
   if (email === ownEmail && (body?.active === false || (body?.role && body.role !== "admin"))) {
@@ -198,6 +211,23 @@ export async function PATCH(request: NextRequest) {
   try {
     const current = await fetchAllowedUser(email, key);
     if (!current) return error("Usuário não localizado.", 404);
+
+    if (body?.refreshDashboard) {
+      if (!current.active) return error("Ative o usuário antes de solicitar a atualização do Dashboard.", 400);
+      const requestedAt = new Date().toISOString();
+      const updateResponse = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?email=eq.${encodeURIComponent(email)}`, {
+        method: "PATCH",
+        headers: { ...serviceHeaders(key), Prefer: "return=representation" },
+        body: JSON.stringify({ refresh_requested_at: requestedAt, updated_at: requestedAt }),
+      });
+      if (!updateResponse.ok) return error("Não foi possível solicitar a atualização do Dashboard.", 500);
+      const rows = await updateResponse.json() as ManagedUser[];
+      const updated = rows[0];
+      if (!updated) return error("Atualização solicitada, mas não foi possível recuperar o cadastro.", 500);
+      const authUser = await findAuthUserByEmail(email, key);
+      if (authUser) await syncProfile(updated, authUser.id, key);
+      return NextResponse.json({ user: updated, refreshRequestedAt: requestedAt });
+    }
 
     if (body?.resetTemporaryPassword) {
       if (!current.active) return error("Ative o usuário antes de gerar uma nova senha temporária.", 400);
