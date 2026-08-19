@@ -20,15 +20,18 @@ type AdminAuthResult =
   | { failure: string; status: number };
 
 const VALID_ROLES = new Set<SandboxRole>(["admin", "updater", "viewer"]);
+const MISSING_SECRET = "SUPABASE_SECRET_KEY não configurada no ambiente Preview.";
 
 function serviceKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+  return process.env.SUPABASE_SECRET_KEY?.trim()
+    || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+    || "";
 }
 
 function serviceHeaders(key: string) {
   return {
     apikey: key,
-    Authorization: `Bearer ${key}`,
+    ...(key.startsWith("sb_secret_") ? {} : { Authorization: `Bearer ${key}` }),
     "Content-Type": "application/json",
   };
 }
@@ -47,10 +50,7 @@ async function authenticateAdmin(request: NextRequest, key: string): Promise<Adm
   if (!token) return { failure: "Sessão não informada.", status: 401 };
 
   const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
   if (!userResponse.ok) return { failure: "Sessão inválida ou expirada.", status: 401 };
@@ -65,7 +65,6 @@ async function authenticateAdmin(request: NextRequest, key: string): Promise<Adm
   if (!profileResponse.ok) return { failure: "Não foi possível validar o administrador.", status: 500 };
   const profiles = await profileResponse.json() as Array<{ role: SandboxRole }>;
   if (profiles[0]?.role !== "admin") return { failure: "Somente administradores podem gerenciar usuários.", status: 403 };
-
   return { user: authUser, token };
 }
 
@@ -99,8 +98,7 @@ function generateTemporaryPassword() {
 
 export async function GET(request: NextRequest) {
   const key = serviceKey();
-  if (!key) return error("SUPABASE_SERVICE_ROLE_KEY não configurada no ambiente Preview.", 503);
-
+  if (!key) return error(MISSING_SECRET, 503);
   const auth = await authenticateAdmin(request, key);
   if ("failure" in auth) return error(auth.failure, auth.status);
 
@@ -109,49 +107,31 @@ export async function GET(request: NextRequest) {
     { headers: serviceHeaders(key), cache: "no-store" },
   );
   if (!response.ok) return error("Não foi possível listar os usuários do Dashboard.", 500);
-  const users = await response.json() as ManagedUser[];
-  return NextResponse.json({ users });
+  return NextResponse.json({ users: await response.json() as ManagedUser[] });
 }
 
 export async function POST(request: NextRequest) {
   const key = serviceKey();
-  if (!key) return error("SUPABASE_SERVICE_ROLE_KEY não configurada no ambiente Preview.", 503);
-
+  if (!key) return error(MISSING_SECRET, 503);
   const auth = await authenticateAdmin(request, key);
   if ("failure" in auth) return error(auth.failure, auth.status);
 
-  const body = await request.json().catch(() => null) as {
-    displayName?: string;
-    email?: string;
-    role?: SandboxRole;
-  } | null;
+  const body = await request.json().catch(() => null) as { displayName?: string; email?: string; role?: SandboxRole } | null;
   const displayName = body?.displayName?.trim() ?? "";
   const email = body?.email?.trim().toLowerCase() ?? "";
   const role = body?.role;
-
   if (!displayName) return error("Informe o nome do usuário.", 400);
   if (!email || !email.includes("@")) return error("Informe um e-mail válido.", 400);
   if (!role || !VALID_ROLES.has(role)) return error("Selecione um perfil válido.", 400);
 
   try {
     if (await fetchAllowedUser(email, key)) return error("Este e-mail já está cadastrado no Dashboard.", 409);
-    if (await findAuthUserByEmail(email, key)) {
-      return error("Este e-mail já existe no Supabase Auth. Para evitar misturar acessos antigos, use outro e-mail ou trate esse cadastro separadamente.", 409);
-    }
+    if (await findAuthUserByEmail(email, key)) return error("Este e-mail já existe no Supabase Auth. Para evitar misturar acessos antigos, use outro e-mail ou trate esse cadastro separadamente.", 409);
 
     const allowResponse = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users`, {
       method: "POST",
-      headers: {
-        ...serviceHeaders(key),
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        email,
-        display_name: displayName,
-        role,
-        active: true,
-        must_change_password: true,
-      }),
+      headers: { ...serviceHeaders(key), Prefer: "return=representation" },
+      body: JSON.stringify({ email, display_name: displayName, role, active: true, must_change_password: true }),
     });
     if (!allowResponse.ok) return error("Não foi possível autorizar o novo usuário.", 500);
 
@@ -159,19 +139,10 @@ export async function POST(request: NextRequest) {
     const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
       method: "POST",
       headers: serviceHeaders(key),
-      body: JSON.stringify({
-        email,
-        password: temporaryPassword,
-        email_confirm: true,
-        user_metadata: { display_name: displayName },
-      }),
+      body: JSON.stringify({ email, password: temporaryPassword, email_confirm: true, user_metadata: { display_name: displayName } }),
     });
-
     if (!authResponse.ok) {
-      await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?email=eq.${encodeURIComponent(email)}`, {
-        method: "DELETE",
-        headers: serviceHeaders(key),
-      });
+      await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?email=eq.${encodeURIComponent(email)}`, { method: "DELETE", headers: serviceHeaders(key) });
       const payload = await authResponse.json().catch(() => null) as { msg?: string; message?: string } | null;
       return error(payload?.msg || payload?.message || "Não foi possível criar o acesso no Supabase Auth.", 500);
     }
@@ -186,16 +157,11 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const key = serviceKey();
-  if (!key) return error("SUPABASE_SERVICE_ROLE_KEY não configurada no ambiente Preview.", 503);
-
+  if (!key) return error(MISSING_SECRET, 503);
   const auth = await authenticateAdmin(request, key);
   if ("failure" in auth) return error(auth.failure, auth.status);
 
-  const body = await request.json().catch(() => null) as {
-    email?: string;
-    role?: SandboxRole;
-    active?: boolean;
-  } | null;
+  const body = await request.json().catch(() => null) as { email?: string; role?: SandboxRole; active?: boolean } | null;
   const email = body?.email?.trim().toLowerCase() ?? "";
   if (!email) return error("Usuário não informado.", 400);
   if (body?.role !== undefined && !VALID_ROLES.has(body.role)) return error("Perfil inválido.", 400);
@@ -208,19 +174,15 @@ export async function PATCH(request: NextRequest) {
   try {
     const current = await fetchAllowedUser(email, key);
     if (!current) return error("Usuário não localizado.", 404);
-
     const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body?.role !== undefined) changes.role = body.role;
     if (body?.active !== undefined) changes.active = body.active;
 
-    const updateResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?email=eq.${encodeURIComponent(email)}`,
-      {
-        method: "PATCH",
-        headers: { ...serviceHeaders(key), Prefer: "return=representation" },
-        body: JSON.stringify(changes),
-      },
-    );
+    const updateResponse = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?email=eq.${encodeURIComponent(email)}`, {
+      method: "PATCH",
+      headers: { ...serviceHeaders(key), Prefer: "return=representation" },
+      body: JSON.stringify(changes),
+    });
     if (!updateResponse.ok) return error("Não foi possível atualizar o usuário.", 500);
     const updatedRows = await updateResponse.json() as ManagedUser[];
     const updated = updatedRows[0];
@@ -231,26 +193,13 @@ export async function PATCH(request: NextRequest) {
       if (updated.active) {
         await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?on_conflict=user_id`, {
           method: "POST",
-          headers: {
-            ...serviceHeaders(key),
-            Prefer: "resolution=merge-duplicates,return=minimal",
-          },
-          body: JSON.stringify({
-            user_id: authUser.id,
-            display_name: updated.display_name,
-            role: updated.role,
-            must_change_password: updated.must_change_password,
-            last_access_at: updated.last_access_at,
-          }),
+          headers: { ...serviceHeaders(key), Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({ user_id: authUser.id, display_name: updated.display_name, role: updated.role, must_change_password: updated.must_change_password, last_access_at: updated.last_access_at }),
         });
       } else {
-        await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?user_id=eq.${encodeURIComponent(authUser.id)}`, {
-          method: "DELETE",
-          headers: serviceHeaders(key),
-        });
+        await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?user_id=eq.${encodeURIComponent(authUser.id)}`, { method: "DELETE", headers: serviceHeaders(key) });
       }
     }
-
     return NextResponse.json({ user: updated });
   } catch (caught) {
     return error(caught instanceof Error ? caught.message : "Falha ao atualizar o usuário.", 500);
