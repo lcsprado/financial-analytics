@@ -89,11 +89,30 @@ async function findAuthUserByEmail(email: string, key: string) {
 }
 
 function generateTemporaryPassword() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const bytes = randomBytes(14);
-  let password = "";
-  for (const byte of bytes) password += alphabet[byte % alphabet.length];
-  return `${password.slice(0, 6)}-${password.slice(6, 12)}!7`;
+  const bytes = randomBytes(2);
+  const number = ((bytes[0] << 8) + bytes[1]) % 10000;
+  return `Teste${String(number).padStart(4, "0")}!`;
+}
+
+async function syncProfile(user: ManagedUser, authUserId: string, key: string) {
+  if (user.active) {
+    await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?on_conflict=user_id`, {
+      method: "POST",
+      headers: { ...serviceHeaders(key), Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({
+        user_id: authUserId,
+        display_name: user.display_name,
+        role: user.role,
+        must_change_password: user.must_change_password,
+        last_access_at: user.last_access_at,
+      }),
+    });
+  } else {
+    await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?user_id=eq.${encodeURIComponent(authUserId)}`, {
+      method: "DELETE",
+      headers: serviceHeaders(key),
+    });
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -161,7 +180,12 @@ export async function PATCH(request: NextRequest) {
   const auth = await authenticateAdmin(request, key);
   if ("failure" in auth) return error(auth.failure, auth.status);
 
-  const body = await request.json().catch(() => null) as { email?: string; role?: SandboxRole; active?: boolean } | null;
+  const body = await request.json().catch(() => null) as {
+    email?: string;
+    role?: SandboxRole;
+    active?: boolean;
+    resetTemporaryPassword?: boolean;
+  } | null;
   const email = body?.email?.trim().toLowerCase() ?? "";
   if (!email) return error("Usuário não informado.", 400);
   if (body?.role !== undefined && !VALID_ROLES.has(body.role)) return error("Perfil inválido.", 400);
@@ -174,6 +198,37 @@ export async function PATCH(request: NextRequest) {
   try {
     const current = await fetchAllowedUser(email, key);
     if (!current) return error("Usuário não localizado.", 404);
+
+    if (body?.resetTemporaryPassword) {
+      if (!current.active) return error("Ative o usuário antes de gerar uma nova senha temporária.", 400);
+      if (!current.must_change_password) return error("A senha temporária só pode ser gerada enquanto o primeiro acesso estiver pendente.", 400);
+
+      const authUser = await findAuthUserByEmail(email, key);
+      if (!authUser) return error("Usuário não localizado no Supabase Auth.", 404);
+      const temporaryPassword = generateTemporaryPassword();
+      const passwordResponse = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(authUser.id)}`, {
+        method: "PUT",
+        headers: serviceHeaders(key),
+        body: JSON.stringify({ password: temporaryPassword }),
+      });
+      if (!passwordResponse.ok) {
+        const payload = await passwordResponse.json().catch(() => null) as { msg?: string; message?: string } | null;
+        return error(payload?.msg || payload?.message || "Não foi possível redefinir a senha temporária.", 500);
+      }
+
+      const updateResponse = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?email=eq.${encodeURIComponent(email)}`, {
+        method: "PATCH",
+        headers: { ...serviceHeaders(key), Prefer: "return=representation" },
+        body: JSON.stringify({ must_change_password: true, updated_at: new Date().toISOString() }),
+      });
+      if (!updateResponse.ok) return error("A senha foi redefinida, mas não foi possível atualizar o primeiro acesso.", 500);
+      const rows = await updateResponse.json() as ManagedUser[];
+      const updated = rows[0];
+      if (!updated) return error("Senha redefinida, mas não foi possível recuperar o cadastro.", 500);
+      await syncProfile(updated, authUser.id, key);
+      return NextResponse.json({ user: updated, temporaryPassword });
+    }
+
     const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body?.role !== undefined) changes.role = body.role;
     if (body?.active !== undefined) changes.active = body.active;
@@ -189,17 +244,7 @@ export async function PATCH(request: NextRequest) {
     if (!updated) return error("Usuário atualizado, mas não foi possível recuperar o cadastro.", 500);
 
     const authUser = await findAuthUserByEmail(email, key);
-    if (authUser) {
-      if (updated.active) {
-        await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?on_conflict=user_id`, {
-          method: "POST",
-          headers: { ...serviceHeaders(key), Prefer: "resolution=merge-duplicates,return=minimal" },
-          body: JSON.stringify({ user_id: authUser.id, display_name: updated.display_name, role: updated.role, must_change_password: updated.must_change_password, last_access_at: updated.last_access_at }),
-        });
-      } else {
-        await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?user_id=eq.${encodeURIComponent(authUser.id)}`, { method: "DELETE", headers: serviceHeaders(key) });
-      }
-    }
+    if (authUser) await syncProfile(updated, authUser.id, key);
     return NextResponse.json({ user: updated });
   } catch (caught) {
     return error(caught instanceof Error ? caught.message : "Falha ao atualizar o usuário.", 500);
