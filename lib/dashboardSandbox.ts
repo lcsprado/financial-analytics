@@ -139,6 +139,21 @@ export async function loadSandboxProfile(session: SandboxSession) {
   return rows[0] ?? null;
 }
 
+export async function checkSandboxAccess(session: SandboxSession) {
+  const query = new URLSearchParams({
+    user_id: `eq.${session.user.id}`,
+    select: "user_id,display_name,role,must_change_password,last_access_at",
+    limit: "1",
+  });
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?${query.toString()}`, {
+    headers: headers(session.access_token),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error("Não foi possível revalidar seu acesso.");
+  const rows = await response.json() as SandboxProfile[];
+  return rows[0] ?? null;
+}
+
 export async function updateSandboxPassword(session: SandboxSession, password: string) {
   if (password.length < 8) throw new Error("A nova senha precisa ter pelo menos 8 caracteres.");
 
