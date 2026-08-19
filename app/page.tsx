@@ -12,7 +12,6 @@ import SandboxAuthGate from "@/components/SandboxAuthGate";
 import SandboxChannelRestore from "@/components/SandboxChannelRestore";
 import SandboxMobileMode from "@/components/SandboxMobileMode";
 import SandboxMobilePolish from "@/components/SandboxMobilePolish";
-import SandboxTablePerformance from "@/components/SandboxTablePerformance";
 
 export default function Home() {
   return (
@@ -20,7 +19,6 @@ export default function Home() {
       <SandboxAnalyticsReady>
         <SandboxChannelRestore />
         <SandboxMobileMode />
-        <SandboxTablePerformance />
         <LegacyDirectorModeCleanup />
         <PrintButton />
         <FinancialDashboard />
