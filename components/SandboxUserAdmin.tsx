@@ -1,16 +1,19 @@
 "use client";
 
-import { Check, Copy, KeyRound, Power, UserPlus, Users, X } from "lucide-react";
+import { Check, Copy, KeyRound, Power, RefreshCw, UserPlus, Users, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import {
   createSandboxUser,
   listSandboxUsers,
+  requestSandboxDashboardRefresh,
   resetSandboxTemporaryPassword,
   updateSandboxManagedUser,
   type SandboxManagedUser,
   type SandboxRole,
   type SandboxSession,
 } from "@/lib/dashboardSandbox";
+
+const PROTECTED_OWNER_EMAIL = "lcsprado4@gmail.com";
 
 const ROLE_LABELS: Record<SandboxRole, string> = {
   admin: "Administrador",
@@ -26,6 +29,7 @@ export default function SandboxUserAdmin({ session, onClose }: {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resettingEmail, setResettingEmail] = useState<string | null>(null);
+  const [refreshingEmail, setRefreshingEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<SandboxRole>("viewer");
@@ -84,6 +88,19 @@ export default function SandboxUserAdmin({ session, onClose }: {
     }
   }
 
+  async function refreshDashboard(user: SandboxManagedUser) {
+    setError(null);
+    setRefreshingEmail(user.email);
+    try {
+      const result = await requestSandboxDashboardRefresh(session, user.email);
+      setUsers((current) => current.map((item) => item.email === result.user.email ? result.user : item));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível solicitar a atualização do Dashboard.");
+    } finally {
+      setRefreshingEmail(null);
+    }
+  }
+
   async function resetPassword(user: SandboxManagedUser) {
     setError(null);
     setTemporaryPassword(null);
@@ -138,7 +155,9 @@ export default function SandboxUserAdmin({ session, onClose }: {
 
         <div className="sandbox-users-list-head"><strong>Usuários cadastrados</strong><span>{users.length} acesso{users.length === 1 ? "" : "s"}</span></div>
         <div className="sandbox-users-list">
-          {loading ? <div className="sandbox-users-empty">Carregando usuários...</div> : users.map((user) => (
+          {loading ? <div className="sandbox-users-empty">Carregando usuários...</div> : users.map((user) => {
+            const protectedOwner = user.email.toLowerCase() === PROTECTED_OWNER_EMAIL;
+            return (
             <article key={user.email} className={!user.active ? "is-disabled" : ""}>
               <div className="sandbox-user-main">
                 <div className="sandbox-user-avatar">{user.display_name.slice(0, 1).toUpperCase()}</div>
@@ -146,29 +165,36 @@ export default function SandboxUserAdmin({ session, onClose }: {
               </div>
               <div className="sandbox-user-meta">
                 <span className={`sandbox-role-pill role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
+                {protectedOwner && <span className="sandbox-owner-pill">Acesso principal protegido</span>}
                 {user.must_change_password && <span className="sandbox-first-login-pill">Primeiro acesso pendente</span>}
                 <small>{user.last_access_at ? `Último acesso: ${new Date(user.last_access_at).toLocaleString("pt-BR")}` : "Ainda não acessou"}</small>
               </div>
               <div className="sandbox-user-actions">
-                <select value={user.role} disabled={!user.active} onChange={(event) => void changeUser(user, { role: event.target.value as SandboxRole })} aria-label={`Perfil de ${user.display_name}`}>
+                <select value={user.role} disabled={!user.active || protectedOwner} onChange={(event) => void changeUser(user, { role: event.target.value as SandboxRole })} aria-label={`Perfil de ${user.display_name}`}>
                   <option value="viewer">Visualizador</option><option value="updater">Atualizador</option><option value="admin">Administrador</option>
                 </select>
-                {user.active && user.must_change_password && (
+                {!protectedOwner && user.active && (
+                  <button type="button" className="refresh" disabled={refreshingEmail === user.email} onClick={() => void refreshDashboard(user)} title="Recarrega o Dashboard deste usuário e busca a base compartilhada mais nova">
+                    <RefreshCw size={15} />{refreshingEmail === user.email ? "Enviando..." : "Atualizar dashboard"}
+                  </button>
+                )}
+                {!protectedOwner && user.active && user.must_change_password && (
                   <button type="button" className="password" disabled={resettingEmail === user.email} onClick={() => void resetPassword(user)}>
                     <KeyRound size={15} />{resettingEmail === user.email ? "Gerando..." : "Nova senha"}
                   </button>
                 )}
-                <button type="button" className={user.active ? "danger" : "activate"} onClick={() => void changeUser(user, { active: !user.active })}><Power size={15} />{user.active ? "Desativar" : "Ativar"}</button>
+                {!protectedOwner && <button type="button" className={user.active ? "danger" : "activate"} onClick={() => void changeUser(user, { active: !user.active })}><Power size={15} />{user.active ? "Desativar" : "Ativar"}</button>}
               </div>
             </article>
-          ))}
+            );
+          })}
           {!loading && !users.length && <div className="sandbox-users-empty">Nenhum usuário cadastrado.</div>}
         </div>
       </section>
 
       <style jsx global>{`
         .sandbox-users-backdrop { position:fixed; inset:0; z-index:5000; display:grid; place-items:center; padding:24px; background:rgba(17,23,39,.58); backdrop-filter:blur(5px); }
-        .sandbox-users-panel { width:min(980px,100%); max-height:min(860px,92vh); overflow:auto; padding:24px; border:1px solid #e3e7f0; border-radius:22px; background:#f8f9fc; color:#1c2333; box-shadow:0 28px 90px rgba(17,23,39,.3); }
+        .sandbox-users-panel { width:min(1080px,100%); max-height:min(860px,92vh); overflow:auto; padding:24px; border:1px solid #e3e7f0; border-radius:22px; background:#f8f9fc; color:#1c2333; box-shadow:0 28px 90px rgba(17,23,39,.3); }
         .sandbox-users-panel > header { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:20px; }
         .sandbox-users-panel > header span { display:flex; align-items:center; gap:6px; color:#5269e8; font-size:10px; font-weight:900; letter-spacing:.09em; }
         .sandbox-users-panel > header h2 { margin:6px 0 4px; font-size:25px; }
@@ -194,7 +220,7 @@ export default function SandboxUserAdmin({ session, onClose }: {
         .sandbox-users-list-head { margin:20px 2px 9px; display:flex; justify-content:space-between; color:#596276; font-size:11px; }
         .sandbox-users-list-head > span { color:#9299a8; }
         .sandbox-users-list { display:grid; gap:8px; }
-        .sandbox-users-list article { display:grid; grid-template-columns:minmax(230px,1.2fr) minmax(250px,1fr) auto; gap:14px; align-items:center; padding:12px 13px; border:1px solid #e4e7ee; border-radius:13px; background:#fff; }
+        .sandbox-users-list article { display:grid; grid-template-columns:minmax(210px,1.15fr) minmax(230px,1fr) auto; gap:14px; align-items:center; padding:12px 13px; border:1px solid #e4e7ee; border-radius:13px; background:#fff; }
         .sandbox-users-list article.is-disabled { opacity:.58; background:#f4f5f8; }
         .sandbox-user-main { display:flex; min-width:0; align-items:center; gap:10px; }
         .sandbox-user-avatar { width:34px; height:34px; display:grid; place-items:center; flex:0 0 auto; border-radius:10px; background:#eef1ff; color:#5269e8; font-size:13px; font-weight:900; }
@@ -203,14 +229,16 @@ export default function SandboxUserAdmin({ session, onClose }: {
         .sandbox-user-main span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#8a92a3; font-size:9px; }
         .sandbox-user-meta { display:flex; flex-wrap:wrap; align-items:center; gap:5px 7px; }
         .sandbox-user-meta small { flex-basis:100%; color:#969dad; font-size:8px; }
-        .sandbox-role-pill,.sandbox-first-login-pill { padding:4px 7px; border-radius:999px; font-size:8px; font-weight:850; }
+        .sandbox-role-pill,.sandbox-first-login-pill,.sandbox-owner-pill { padding:4px 7px; border-radius:999px; font-size:8px; font-weight:850; }
         .sandbox-role-pill { background:#eef1ff; color:#5269e8; }.sandbox-role-pill.role-updater{background:#eef9f4;color:#21835a}.sandbox-role-pill.role-viewer{background:#f1f3f6;color:#687286}
         .sandbox-first-login-pill { background:#fff5df; color:#996619; }
-        .sandbox-user-actions { display:flex; align-items:center; gap:7px; }
+        .sandbox-owner-pill { background:#eef1ff; color:#394fc7; }
+        .sandbox-user-actions { display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
         .sandbox-user-actions select { height:34px; padding:0 8px; border:1px solid #e0e4ec; border-radius:8px; background:#fff; color:#555f74; font-size:9px; font-weight:700; }
-        .sandbox-user-actions button { height:34px; padding:0 9px; display:flex; align-items:center; gap:5px; border:1px solid #f0ccd0; border-radius:8px; background:#fff6f7; color:#a53d49; font-size:9px; font-weight:800; cursor:pointer; }
+        .sandbox-user-actions button { height:34px; padding:0 9px; display:flex; align-items:center; gap:5px; border:1px solid #f0ccd0; border-radius:8px; background:#fff6f7; color:#a53d49; font-size:9px; font-weight:800; cursor:pointer; white-space:nowrap; }
         .sandbox-user-actions button.password { border-color:#d7ddff; background:#f4f6ff; color:#5269e8; }
-        .sandbox-user-actions button:disabled { opacity:.55; cursor:wait; }
+        .sandbox-user-actions button.refresh { border-color:#cbd5ff; background:#f1f4ff; color:#4560d9; }
+        .sandbox-user-actions button:disabled,.sandbox-user-actions select:disabled { opacity:.55; cursor:not-allowed; }
         .sandbox-user-actions button.activate { border-color:#cde8da; background:#f0faf5; color:#247b55; }
         .sandbox-users-empty { padding:25px; border:1px dashed #dfe3eb; border-radius:12px; color:#9299a8; background:#fff; font-size:11px; text-align:center; }
         @media(max-width:760px){
