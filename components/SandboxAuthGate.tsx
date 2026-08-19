@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
-import { CheckCircle2, KeyRound, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import { CheckCircle2, KeyRound, LogIn, LogOut, ShieldCheck, Users } from "lucide-react";
+import SandboxUserAdmin from "@/components/SandboxUserAdmin";
 import {
   getValidSandboxSession,
   loadCurrentSandboxSnapshot,
@@ -9,7 +10,7 @@ import {
   saveSandboxSnapshot,
   signInSandbox,
   signOutSandbox,
-  signUpSandbox,
+  updateSandboxPassword,
   type SandboxProfile,
   type SandboxSession,
 } from "@/lib/dashboardSandbox";
@@ -21,8 +22,6 @@ import {
   setStorageConsent,
 } from "@/lib/offlineStorage";
 import type { ImportState } from "@/lib/types";
-
-const FIRST_ADMIN_EMAIL = "lcsprado4@gmail.com";
 
 function dataFingerprint(data: ImportState) {
   let hash = 2166136261;
@@ -48,39 +47,54 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SandboxSession | null>(null);
   const [profile, setProfile] = useState<SandboxProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<"login" | "first-access">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [baseInfo, setBaseInfo] = useState<string>("Nenhuma base compartilhada publicada ainda.");
   const lastSyncedFingerprint = useRef<string | null>(null);
+
+  async function hydrateSharedSnapshot(nextSession: SandboxSession) {
+    const snapshot = await loadCurrentSandboxSnapshot(nextSession);
+    if (!snapshot) {
+      setBaseInfo("Nenhuma base compartilhada publicada ainda.");
+      return;
+    }
+
+    const remoteData: ImportState = {
+      invoices: snapshot.invoices,
+      receipts: snapshot.receipts,
+      invoiceFileName: snapshot.invoice_file_name ?? undefined,
+      receiptFileName: snapshot.receipt_file_name ?? undefined,
+    };
+    lastSyncedFingerprint.current = dataFingerprint(remoteData);
+    setStorageConsent(true);
+    await Promise.all([
+      saveAnalysisState(remoteData),
+      saveChannelPayload({ entries: snapshot.receipt_channels }),
+    ]);
+    const when = new Date(snapshot.created_at).toLocaleString("pt-BR");
+    setBaseInfo(`Base compartilhada: ${when}${snapshot.uploaded_by_name ? ` • ${snapshot.uploaded_by_name}` : ""}`);
+  }
 
   async function bootstrap(nextSession: SandboxSession) {
     const nextProfile = await loadSandboxProfile(nextSession);
     if (!nextProfile) throw new Error("Seu usuário ainda não foi autorizado neste dashboard de teste.");
 
-    const snapshot = await loadCurrentSandboxSnapshot(nextSession);
-    if (snapshot) {
-      const remoteData: ImportState = {
-        invoices: snapshot.invoices,
-        receipts: snapshot.receipts,
-        invoiceFileName: snapshot.invoice_file_name ?? undefined,
-        receiptFileName: snapshot.receipt_file_name ?? undefined,
-      };
-      lastSyncedFingerprint.current = dataFingerprint(remoteData);
-      setStorageConsent(true);
-      await Promise.all([
-        saveAnalysisState(remoteData),
-        saveChannelPayload({ entries: snapshot.receipt_channels }),
-      ]);
-      const when = new Date(snapshot.created_at).toLocaleString("pt-BR");
-      setBaseInfo(`Base compartilhada: ${when}${snapshot.uploaded_by_name ? ` • ${snapshot.uploaded_by_name}` : ""}`);
-    }
     setSession(nextSession);
     setProfile(nextProfile);
     document.documentElement.dataset.sandboxRole = nextProfile.role;
+
+    // Nenhum dado financeiro é hidratado antes da troca da senha temporária.
+    if (nextProfile.must_change_password) {
+      setBaseInfo("Primeiro acesso pendente: altere a senha temporária.");
+      return;
+    }
+
+    await hydrateSharedSnapshot(nextSession);
   }
 
   useEffect(() => {
@@ -93,6 +107,8 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
       } catch (caught) {
         if (active) {
           signOutSandbox();
+          setSession(null);
+          setProfile(null);
           setError(caught instanceof Error ? caught.message : "Não foi possível abrir o sandbox.");
         }
       } finally {
@@ -103,7 +119,7 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!session || !profile || profile.role === "viewer") return;
+    if (!session || !profile || profile.must_change_password || profile.role === "viewer") return;
 
     const handleAnalysisUpdate = (event: Event) => {
       const data = (event as CustomEvent<ImportState>).detail;
@@ -142,7 +158,6 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     event.preventDefault();
     setLoading(true);
     setError(null);
-    setMessage(null);
     try {
       const nextSession = await signInSandbox(email.trim(), password);
       await bootstrap(nextSession);
@@ -157,48 +172,40 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     }
   }
 
-  async function handleFirstAccess(event: FormEvent<HTMLFormElement>) {
+  async function handlePasswordChange(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!session) return;
     setError(null);
-    setMessage(null);
-    const cleanEmail = email.trim().toLowerCase();
-    if (cleanEmail !== FIRST_ADMIN_EMAIL) {
-      setError(`Neste primeiro teste, o acesso inicial autorizado é ${FIRST_ADMIN_EMAIL}.`);
+    if (newPassword.length < 8) {
+      setError("A nova senha precisa ter pelo menos 8 caracteres.");
       return;
     }
-    if (password.length < 8) {
-      setError("Escolha uma senha com pelo menos 8 caracteres.");
-      return;
-    }
-    if (password !== passwordConfirm) {
+    if (newPassword !== newPasswordConfirm) {
       setError("As duas senhas precisam ser iguais.");
       return;
     }
 
-    setLoading(true);
+    setChangingPassword(true);
     try {
-      const result = await signUpSandbox(cleanEmail, password);
-      if (result.session) {
-        await bootstrap(result.session);
-      } else {
-        setMode("login");
-        setPasswordConfirm("");
-        setMessage("Acesso criado. Confira o e-mail para confirmar o cadastro e depois entre com a senha que você acabou de escolher.");
-      }
+      await updateSandboxPassword(session, newPassword);
+      const nextProfile = await loadSandboxProfile(session);
+      if (!nextProfile) throw new Error("Não foi possível revalidar seu acesso.");
+      setProfile(nextProfile);
+      document.documentElement.dataset.sandboxRole = nextProfile.role;
+      setNewPassword("");
+      setNewPasswordConfirm("");
+      await hydrateSharedSnapshot(session);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Não foi possível criar o acesso.");
+      setError(caught instanceof Error ? caught.message : "Não foi possível concluir a troca de senha.");
     } finally {
-      setLoading(false);
+      setChangingPassword(false);
     }
   }
 
-  function switchMode(nextMode: "login" | "first-access") {
-    setMode(nextMode);
-    setError(null);
-    setMessage(null);
-    setPassword("");
-    setPasswordConfirm("");
-    if (nextMode === "first-access") setEmail(FIRST_ADMIN_EMAIL);
+  function logout() {
+    signOutSandbox();
+    delete document.documentElement.dataset.sandboxRole;
+    window.location.reload();
   }
 
   if (loading && !session) {
@@ -206,31 +213,35 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   }
 
   if (!session || !profile) {
-    const isFirstAccess = mode === "first-access";
     return (
       <main className="sandbox-login-shell">
-        <form className="sandbox-login-card" onSubmit={isFirstAccess ? handleFirstAccess : handleLogin}>
+        <form className="sandbox-login-card" onSubmit={handleLogin}>
           <span className="sandbox-badge"><ShieldCheck size={15} /> AMBIENTE DE TESTE</span>
-          <h1>{isFirstAccess ? "Criar acesso" : "Financial Analytics"}</h1>
-          <p>
-            {isFirstAccess
-              ? "Crie uma senha exclusiva para o Dashboard. Ela não é a senha da sua conta do Supabase."
-              : "Entre para acessar a base compartilhada de testes. O dashboard de produção não é afetado por este ambiente."}
-          </p>
-          <label><span>E-mail</span><input type="email" autoComplete="username" value={email} readOnly={isFirstAccess} onChange={(event) => setEmail(event.target.value)} required /></label>
-          <label><span>{isFirstAccess ? "Criar senha" : "Senha"}</span><input type="password" minLength={isFirstAccess ? 8 : undefined} autoComplete={isFirstAccess ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-          {isFirstAccess && (
-            <label><span>Confirmar senha</span><input type="password" minLength={8} autoComplete="new-password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} required /></label>
-          )}
-          {message && <div className="sandbox-success">{message}</div>}
+          <h1>Financial Analytics</h1>
+          <p>Entre com o acesso criado pelo administrador. O dashboard de produção não é afetado por este ambiente.</p>
+          <label><span>E-mail</span><input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label><span>Senha</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
           {error && <div className="sandbox-error">{error}</div>}
-          <button type="submit" disabled={loading}>
-            {isFirstAccess ? <KeyRound size={17} /> : <LogIn size={17} />}
-            {loading ? "Aguarde..." : isFirstAccess ? "Criar meu acesso" : "Entrar"}
-          </button>
-          <button className="sandbox-link-button" type="button" onClick={() => switchMode(isFirstAccess ? "login" : "first-access")}>
-            {isFirstAccess ? "Já tenho acesso" : "Primeiro acesso"}
-          </button>
+          <button type="submit" disabled={loading}><LogIn size={17} />{loading ? "Aguarde..." : "Entrar"}</button>
+        </form>
+        <SandboxStyles />
+      </main>
+    );
+  }
+
+  if (profile.must_change_password) {
+    return (
+      <main className="sandbox-login-shell">
+        <form className="sandbox-login-card sandbox-password-change" onSubmit={handlePasswordChange}>
+          <span className="sandbox-badge"><KeyRound size={15} /> PRIMEIRO ACESSO</span>
+          <h1>Crie sua senha</h1>
+          <p>Você entrou com uma senha temporária. Defina sua senha definitiva antes de acessar qualquer informação financeira.</p>
+          <div className="sandbox-account-chip"><strong>{profile.display_name ?? "Usuário"}</strong><span>{session.user.email}</span></div>
+          <label><span>Nova senha</span><input type="password" minLength={8} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required /></label>
+          <label><span>Confirmar nova senha</span><input type="password" minLength={8} autoComplete="new-password" value={newPasswordConfirm} onChange={(event) => setNewPasswordConfirm(event.target.value)} required /></label>
+          {error && <div className="sandbox-error">{error}</div>}
+          <button type="submit" disabled={changingPassword}><KeyRound size={17} />{changingPassword ? "Salvando..." : "Salvar nova senha e entrar"}</button>
+          <button className="sandbox-link-button" type="button" onClick={logout}>Sair e usar outro acesso</button>
         </form>
         <SandboxStyles />
       </main>
@@ -247,9 +258,13 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
           <span>Perfil: {profile.role}</span>
           {error && <span className="sandbox-banner-error">⚠ {error}</span>}
         </div>
-        <button type="button" onClick={() => { signOutSandbox(); window.location.reload(); }}><LogOut size={15} /> Sair</button>
+        <div className="sandbox-banner-actions">
+          {profile.role === "admin" && <button type="button" onClick={() => setUsersOpen(true)}><Users size={15} /> Usuários</button>}
+          <button type="button" onClick={logout}><LogOut size={15} /> Sair</button>
+        </div>
       </div>
       {children}
+      {usersOpen && profile.role === "admin" && <SandboxUserAdmin session={session} onClose={() => setUsersOpen(false)} />}
       <SandboxStyles />
     </>
   );
@@ -263,16 +278,21 @@ function SandboxStyles() {
     .sandbox-login-card p { margin:0; color:#687089; line-height:1.55; }
     .sandbox-login-card label { display:grid; gap:7px; font-size:13px; font-weight:700; }
     .sandbox-login-card input { min-height:44px; border:1px solid #d8deeb; border-radius:11px; padding:0 13px; font:inherit; }
-    .sandbox-login-card input[readonly] { background:#f7f8fc; color:#59627a; }
     .sandbox-login-card button { min-height:44px; border:0; border-radius:11px; background:#5269e8; color:#fff; font-weight:800; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; }
+    .sandbox-login-card button:disabled { opacity:.62; cursor:wait; }
     .sandbox-login-card .sandbox-link-button { min-height:auto; background:transparent; color:#5269e8; padding:4px; font-weight:750; }
     .sandbox-badge { width:max-content; display:flex; align-items:center; gap:6px; font-size:11px; font-weight:900; letter-spacing:.08em; color:#5269e8; background:#eef1ff; border-radius:999px; padding:7px 10px; }
+    .sandbox-account-chip { display:grid; gap:2px; padding:11px 12px; border:1px solid #e5e8f0; border-radius:11px; background:#f8f9fc; }
+    .sandbox-account-chip strong { font-size:12px; }.sandbox-account-chip span { color:#81899a; font-size:10px; }
     .sandbox-error { padding:10px 12px; border-radius:10px; background:#fff0f1; color:#b42332; font-size:13px; }
-    .sandbox-success { padding:10px 12px; border-radius:10px; background:#eefaf4; color:#18794e; font-size:13px; }
     .sandbox-test-banner { position:relative; z-index:1000; min-height:40px; padding:7px 18px; background:#171d2d; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:14px; font-size:12px; }
-    .sandbox-test-banner > div { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .sandbox-test-banner > div:first-child { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .sandbox-banner-actions { display:flex; align-items:center; gap:7px; flex:0 0 auto; }
     .sandbox-test-banner button { border:1px solid rgba(255,255,255,.22); background:transparent; color:#fff; border-radius:8px; padding:6px 9px; display:flex; gap:6px; align-items:center; cursor:pointer; }
     .sandbox-banner-error { color:#ffd1d5; font-weight:700; }
-    @media(max-width:640px){ .sandbox-test-banner { align-items:flex-start; } .sandbox-test-banner span:not(.sandbox-banner-error) { display:none; } }
+    @media(max-width:640px){
+      .sandbox-login-shell { padding:16px; }.sandbox-login-card { padding:24px 20px; border-radius:18px; }.sandbox-login-card h1 { font-size:25px; }
+      .sandbox-test-banner { align-items:center; padding-left:10px; padding-right:10px; }.sandbox-test-banner span:not(.sandbox-banner-error) { display:none; }.sandbox-test-banner button { padding:6px 7px; font-size:10px; }
+    }
   `}</style>;
 }
