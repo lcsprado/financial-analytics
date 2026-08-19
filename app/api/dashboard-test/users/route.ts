@@ -15,6 +15,9 @@ type ManagedUser = {
   created_at: string;
   updated_at: string;
 };
+type AdminAuthResult =
+  | { user: { id?: string; email?: string }; token: string }
+  | { failure: string; status: number };
 
 const VALID_ROLES = new Set<SandboxRole>(["admin", "updater", "viewer"]);
 
@@ -39,9 +42,9 @@ function bearerToken(request: NextRequest) {
   return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
 }
 
-async function authenticateAdmin(request: NextRequest, key: string) {
+async function authenticateAdmin(request: NextRequest, key: string): Promise<AdminAuthResult> {
   const token = bearerToken(request);
-  if (!token) return { error: "Sessão não informada.", status: 401 } as const;
+  if (!token) return { failure: "Sessão não informada.", status: 401 };
 
   const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: {
@@ -50,20 +53,20 @@ async function authenticateAdmin(request: NextRequest, key: string) {
     },
     cache: "no-store",
   });
-  if (!userResponse.ok) return { error: "Sessão inválida ou expirada.", status: 401 } as const;
+  if (!userResponse.ok) return { failure: "Sessão inválida ou expirada.", status: 401 };
 
   const authUser = await userResponse.json() as { id?: string; email?: string };
-  if (!authUser.id) return { error: "Usuário não identificado.", status: 401 } as const;
+  if (!authUser.id) return { failure: "Usuário não identificado.", status: 401 };
 
   const profileResponse = await fetch(
     `${SUPABASE_URL}/rest/v1/dashboard_test_profiles?user_id=eq.${encodeURIComponent(authUser.id)}&select=role&limit=1`,
     { headers: serviceHeaders(key), cache: "no-store" },
   );
-  if (!profileResponse.ok) return { error: "Não foi possível validar o administrador.", status: 500 } as const;
+  if (!profileResponse.ok) return { failure: "Não foi possível validar o administrador.", status: 500 };
   const profiles = await profileResponse.json() as Array<{ role: SandboxRole }>;
-  if (profiles[0]?.role !== "admin") return { error: "Somente administradores podem gerenciar usuários.", status: 403 } as const;
+  if (profiles[0]?.role !== "admin") return { failure: "Somente administradores podem gerenciar usuários.", status: 403 };
 
-  return { user: authUser, token } as const;
+  return { user: authUser, token };
 }
 
 async function fetchAllowedUser(email: string, key: string) {
@@ -99,7 +102,7 @@ export async function GET(request: NextRequest) {
   if (!key) return error("SUPABASE_SERVICE_ROLE_KEY não configurada no ambiente Preview.", 503);
 
   const auth = await authenticateAdmin(request, key);
-  if ("error" in auth) return error(auth.error, auth.status);
+  if ("failure" in auth) return error(auth.failure, auth.status);
 
   const response = await fetch(
     `${SUPABASE_URL}/rest/v1/dashboard_test_allowed_users?select=email,display_name,role,active,must_change_password,last_access_at,created_at,updated_at&order=display_name.asc`,
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
   if (!key) return error("SUPABASE_SERVICE_ROLE_KEY não configurada no ambiente Preview.", 503);
 
   const auth = await authenticateAdmin(request, key);
-  if ("error" in auth) return error(auth.error, auth.status);
+  if ("failure" in auth) return error(auth.failure, auth.status);
 
   const body = await request.json().catch(() => null) as {
     displayName?: string;
@@ -186,7 +189,7 @@ export async function PATCH(request: NextRequest) {
   if (!key) return error("SUPABASE_SERVICE_ROLE_KEY não configurada no ambiente Preview.", 503);
 
   const auth = await authenticateAdmin(request, key);
-  if ("error" in auth) return error(auth.error, auth.status);
+  if ("failure" in auth) return error(auth.failure, auth.status);
 
   const body = await request.json().catch(() => null) as {
     email?: string;
