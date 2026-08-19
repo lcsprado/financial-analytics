@@ -59,6 +59,15 @@ function scopeFromButton(button: HTMLButtonElement): Scope | null {
 
 export default function PerformanceScopedEnhancers() {
   const [scope, setScope] = useState<Scope>("overview");
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const syncMobile = () => setIsMobile(media.matches);
+    syncMobile();
+    media.addEventListener("change", syncMobile);
+    return () => media.removeEventListener("change", syncMobile);
+  }, []);
 
   useEffect(() => {
     let scheduled: number | null = null;
@@ -129,7 +138,7 @@ export default function PerformanceScopedEnhancers() {
 
       {scope === "receipts" ? (
         <>
-          <ReceiptClientLinkManager />
+          {!isMobile ? <ReceiptClientLinkManager /> : null}
           <ReceiptDateRangeFilter />
         </>
       ) : null}
