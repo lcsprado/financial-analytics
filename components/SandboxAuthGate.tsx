@@ -4,6 +4,7 @@ import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { CheckCircle2, KeyRound, LogIn, LogOut, ShieldCheck, Users } from "lucide-react";
 import SandboxUserAdmin from "@/components/SandboxUserAdmin";
 import {
+  checkSandboxAccess,
   getValidSandboxSession,
   loadCurrentSandboxSnapshot,
   loadSandboxProfile,
@@ -119,6 +120,61 @@ export default function SandboxAuthGate({ children }: { children: ReactNode }) {
     })();
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!session || !profile || profile.must_change_password) return;
+
+    let active = true;
+    let checking = false;
+
+    const revalidateAccess = async () => {
+      if (!active || checking) return;
+      checking = true;
+      try {
+        const latest = await checkSandboxAccess(session);
+        if (!active) return;
+
+        if (!latest) {
+          signOutSandbox();
+          delete document.documentElement.dataset.sandboxRole;
+          setUsersOpen(false);
+          setSession(null);
+          setProfile(null);
+          setError("Seu acesso foi desativado pelo administrador.");
+          return;
+        }
+
+        if (
+          latest.role !== profile.role
+          || latest.display_name !== profile.display_name
+          || latest.must_change_password !== profile.must_change_password
+        ) {
+          setProfile(latest);
+          document.documentElement.dataset.sandboxRole = latest.role;
+        }
+      } catch {
+        // Falha transitória de rede não deve derrubar um usuário autorizado.
+      } finally {
+        checking = false;
+      }
+    };
+
+    const interval = window.setInterval(() => { void revalidateAccess(); }, 5000);
+    const onFocus = () => { void revalidateAccess(); };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void revalidateAccess();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [session, profile]);
 
   useEffect(() => {
     if (!session || !profile || profile.must_change_password || profile.role === "viewer") return;
