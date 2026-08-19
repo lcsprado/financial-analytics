@@ -102,8 +102,8 @@ export default function SandboxUserAdmin({ session, onClose }: {
   }
 
   async function copyCredentials() {
-    if (!temporaryPassword || !createdEmail) return;
-    await navigator.clipboard.writeText(`E-mail: ${createdEmail}\nSenha temporária: ${temporaryPassword}`);
+    if (!temporaryPassword) return;
+    await navigator.clipboard.writeText(temporaryPassword);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   }
@@ -124,7 +124,7 @@ export default function SandboxUserAdmin({ session, onClose }: {
           <div className="sandbox-temp-password">
             <div><strong>Senha temporária para {createdEmail}</strong><span>Copie agora. Ela será substituída pela senha definitiva no primeiro acesso.</span></div>
             <code>{temporaryPassword}</code>
-            <button type="button" onClick={copyCredentials}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copiado" : "Copiar acesso"}</button>
+            <button type="button" onClick={copyCredentials}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copiada" : "Copiar senha"}</button>
           </div>
         )}
 
