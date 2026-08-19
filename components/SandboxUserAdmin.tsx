@@ -1,10 +1,11 @@
 "use client";
 
-import { Check, Copy, Power, UserPlus, Users, X } from "lucide-react";
+import { Check, Copy, KeyRound, Power, UserPlus, Users, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import {
   createSandboxUser,
   listSandboxUsers,
+  resetSandboxTemporaryPassword,
   updateSandboxManagedUser,
   type SandboxManagedUser,
   type SandboxRole,
@@ -24,6 +25,7 @@ export default function SandboxUserAdmin({ session, onClose }: {
   const [users, setUsers] = useState<SandboxManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resettingEmail, setResettingEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<SandboxRole>("viewer");
@@ -82,6 +84,23 @@ export default function SandboxUserAdmin({ session, onClose }: {
     }
   }
 
+  async function resetPassword(user: SandboxManagedUser) {
+    setError(null);
+    setTemporaryPassword(null);
+    setResettingEmail(user.email);
+    try {
+      const result = await resetSandboxTemporaryPassword(session, user.email);
+      setUsers((current) => current.map((item) => item.email === result.user.email ? result.user : item));
+      setTemporaryPassword(result.temporaryPassword);
+      setCreatedEmail(result.user.email);
+      setCopied(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível gerar uma nova senha temporária.");
+    } finally {
+      setResettingEmail(null);
+    }
+  }
+
   async function copyCredentials() {
     if (!temporaryPassword || !createdEmail) return;
     await navigator.clipboard.writeText(`E-mail: ${createdEmail}\nSenha temporária: ${temporaryPassword}`);
@@ -103,7 +122,7 @@ export default function SandboxUserAdmin({ session, onClose }: {
 
         {temporaryPassword && createdEmail && (
           <div className="sandbox-temp-password">
-            <div><strong>Acesso criado para {createdEmail}</strong><span>Copie agora. A senha temporária não fica armazenada nesta tela.</span></div>
+            <div><strong>Senha temporária para {createdEmail}</strong><span>Copie agora. Ela será substituída pela senha definitiva no primeiro acesso.</span></div>
             <code>{temporaryPassword}</code>
             <button type="button" onClick={copyCredentials}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copiado" : "Copiar acesso"}</button>
           </div>
@@ -134,6 +153,11 @@ export default function SandboxUserAdmin({ session, onClose }: {
                 <select value={user.role} disabled={!user.active} onChange={(event) => void changeUser(user, { role: event.target.value as SandboxRole })} aria-label={`Perfil de ${user.display_name}`}>
                   <option value="viewer">Visualizador</option><option value="updater">Atualizador</option><option value="admin">Administrador</option>
                 </select>
+                {user.active && user.must_change_password && (
+                  <button type="button" className="password" disabled={resettingEmail === user.email} onClick={() => void resetPassword(user)}>
+                    <KeyRound size={15} />{resettingEmail === user.email ? "Gerando..." : "Nova senha"}
+                  </button>
+                )}
                 <button type="button" className={user.active ? "danger" : "activate"} onClick={() => void changeUser(user, { active: !user.active })}><Power size={15} />{user.active ? "Desativar" : "Ativar"}</button>
               </div>
             </article>
@@ -185,6 +209,8 @@ export default function SandboxUserAdmin({ session, onClose }: {
         .sandbox-user-actions { display:flex; align-items:center; gap:7px; }
         .sandbox-user-actions select { height:34px; padding:0 8px; border:1px solid #e0e4ec; border-radius:8px; background:#fff; color:#555f74; font-size:9px; font-weight:700; }
         .sandbox-user-actions button { height:34px; padding:0 9px; display:flex; align-items:center; gap:5px; border:1px solid #f0ccd0; border-radius:8px; background:#fff6f7; color:#a53d49; font-size:9px; font-weight:800; cursor:pointer; }
+        .sandbox-user-actions button.password { border-color:#d7ddff; background:#f4f6ff; color:#5269e8; }
+        .sandbox-user-actions button:disabled { opacity:.55; cursor:wait; }
         .sandbox-user-actions button.activate { border-color:#cde8da; background:#f0faf5; color:#247b55; }
         .sandbox-users-empty { padding:25px; border:1px dashed #dfe3eb; border-radius:12px; color:#9299a8; background:#fff; font-size:11px; text-align:center; }
         @media(max-width:760px){
