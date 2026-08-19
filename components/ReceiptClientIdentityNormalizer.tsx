@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { setReceiptClientAliasLinks } from "@/lib/analytics";
 import {
   normalizeReceiptClientIdentities,
   type ReceiptIdentityStats,
@@ -67,13 +66,10 @@ export default function ReceiptClientIdentityNormalizer() {
 
     const reloadLinks = async () => {
       try {
-        const links = await listReceiptClientLinks();
-        linksRef.current = links;
-        setReceiptClientAliasLinks(links);
+        linksRef.current = await listReceiptClientLinks();
         if (dataRef.current) process(dataRef.current);
       } catch {
         linksRef.current = [];
-        setReceiptClientAliasLinks([]);
       }
     };
 
@@ -91,7 +87,6 @@ export default function ReceiptClientIdentityNormalizer() {
     const onClear = () => {
       dataRef.current = null;
       latestStats.current = EMPTY_STATS;
-      setReceiptClientAliasLinks([]);
       setStats(EMPTY_STATS);
     };
 
