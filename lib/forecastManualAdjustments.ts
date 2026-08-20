@@ -25,7 +25,7 @@ export type NewForecastManualAdjustment = Omit<
 
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL";
-const TABLE = "forecast_manual_adjustments";
+const TABLE = "forecast_manual_adjustments_prod";
 
 function headers(prefer?: string) {
   return {
