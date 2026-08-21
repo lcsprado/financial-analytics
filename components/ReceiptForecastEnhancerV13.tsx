@@ -593,10 +593,14 @@ function ForecastView({ data }: { data: ImportState }) {
   }, [preClientRows]);
   const knownClients = useMemo(() => {
     const map = new Map<string, string>();
+    sourceReceipts(data.receipts).forEach((receipt) => {
+      const clientName = canonicalReceiptClientName(receipt.clientHint || receipt.description);
+      if (clientName) map.set(normalizeKey(clientName), clientName);
+    });
     history.slots.forEach((slot) => map.set(slot.clientKey, slot.clientName));
     rows.forEach((row) => map.set(row.clientKey, row.clientName));
     return [...map.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [history.slots, rows]);
+  }, [data.receipts, history.slots, rows]);
 
   useEffect(() => {
     if (selectedClient !== "all" && !clients.some((client) => client.key === selectedClient)) setSelectedClient("all");
