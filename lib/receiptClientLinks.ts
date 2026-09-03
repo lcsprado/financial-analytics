@@ -70,6 +70,41 @@ export async function createReceiptClientGroup(canonicalName: string, aliases: s
   return (await response.json()) as ReceiptClientLink[];
 }
 
+export async function addReceiptClientAliases(groupId: string, canonicalName: string, aliases: string[]) {
+  const cleanAliases = [...new Map(
+    aliases
+      .map((name) => name.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .map((name) => [receiptAliasKey(name), name] as const),
+  ).values()];
+  if (!cleanAliases.length) return [];
+
+  const payload = cleanAliases.map((aliasName) => ({
+    group_id: groupId,
+    canonical_name: canonicalName.replace(/\s+/g, " ").trim(),
+    alias_name: aliasName,
+    alias_key: receiptAliasKey(aliasName),
+  }));
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=alias_key`, {
+    method: "POST",
+    headers: headers("resolution=merge-duplicates,return=representation"),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) await parseError(response);
+  window.dispatchEvent(new Event(RECEIPT_CLIENT_LINKS_EVENT));
+  return (await response.json()) as ReceiptClientLink[];
+}
+
+export async function deleteReceiptClientAlias(aliasKey: string) {
+  const query = new URLSearchParams({ alias_key: `eq.${aliasKey}` });
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?${query.toString()}`, {
+    method: "DELETE",
+    headers: headers(),
+  });
+  if (!response.ok) await parseError(response);
+  window.dispatchEvent(new Event(RECEIPT_CLIENT_LINKS_EVENT));
+}
+
 export async function deleteReceiptClientGroup(groupId: string) {
   const query = new URLSearchParams({ group_id: `eq.${groupId}` });
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?${query.toString()}`, {
