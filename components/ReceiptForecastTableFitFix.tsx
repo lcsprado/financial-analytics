@@ -13,11 +13,12 @@ export default function ReceiptForecastTableFitFix() {
       .receipt-forecast-page-v13 .forecast-table-v13 td {
         padding-left: 9px;
         padding-right: 9px;
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
+        word-break: normal;
       }
 
       .receipt-forecast-page-v13 .forecast-table-v13 th:nth-child(1),
-      .receipt-forecast-page-v13 .forecast-table-v13 td:nth-child(1) { width: 30%; }
+      .receipt-forecast-page-v13 .forecast-table-v13 td:nth-child(1) { width: 31%; }
       .receipt-forecast-page-v13 .forecast-table-v13 th:nth-child(2),
       .receipt-forecast-page-v13 .forecast-table-v13 td:nth-child(2) { width: 13%; }
       .receipt-forecast-page-v13 .forecast-table-v13 th:nth-child(3),
@@ -29,14 +30,22 @@ export default function ReceiptForecastTableFitFix() {
       .receipt-forecast-page-v13 .forecast-table-v13 th:nth-child(6),
       .receipt-forecast-page-v13 .forecast-table-v13 td:nth-child(6) { width: 8%; }
       .receipt-forecast-page-v13 .forecast-table-v13 th:nth-child(7),
-      .receipt-forecast-page-v13 .forecast-table-v13 td:nth-child(7) { width: 12%; }
+      .receipt-forecast-page-v13 .forecast-table-v13 td:nth-child(7) { width: 11%; }
 
       .receipt-forecast-page-v13 .forecast-table-v13 td.client {
+        display: table-cell !important;
         min-width: 0 !important;
+        overflow-wrap: normal;
+        word-break: normal;
+      }
+
+      .receipt-forecast-page-v13 .forecast-table-v13 td.client strong,
+      .receipt-forecast-page-v13 .forecast-table-v13 td.client span {
+        display: block;
       }
 
       .receipt-forecast-page-v13 .row-actions-v13 {
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
       }
     `}</style>
   );
