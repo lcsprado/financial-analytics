@@ -1,5 +1,6 @@
 import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
 import FinancialDashboard from "@/components/FinancialDashboard";
+import ForecastNavigationStateSync from "@/components/ForecastNavigationStateSync";
 import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalizer";
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import PerformanceScopedEnhancers from "@/components/PerformanceScopedEnhancers";
@@ -15,6 +16,7 @@ export default function Home() {
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
+      <ForecastNavigationStateSync />
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
       <InvoiceClientCodeNormalizer />
