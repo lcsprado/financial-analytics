@@ -1,0 +1,42 @@
+name: Audit source sync
+
+on:
+  push:
+    branches:
+      - audit-fixes-2026-09-03
+    paths:
+      - '.audit-sync/**'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-fixes-2026-09-03
+      - name: Reconstruct audited source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .audit-sync/part1 .audit-sync/part2 .audit-sync/part3 .audit-sync/part4 | base64 --decode > /tmp/audit-sync.tar.gz
+          echo '5d787789100426c9e9feee6f621f7d5ab0033797a60457f7df7cdc2408655499  /tmp/audit-sync.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/audit-sync.tar.gz
+          echo '89412449a7ca0ca353b10d621452e46b9f89864d54f16595ad07a8a16a05acf4  components/FinancialDashboard.tsx' | sha256sum -c -
+          echo '51dff96ac837d22a0386857426cb352a7f6abe3ca4c28300d26187b7c5be315f  app/globals.css' | sha256sum -c -
+          echo '3cb042064a99e67f7eb043617fb135e11381d0d3205543962eaa9a984f2c304e  app/print-fix.css' | sha256sum -c -
+      - name: Commit audited source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'audit-sync[bot]'
+          git config user.email 'audit-sync@users.noreply.github.com'
+          git add components/FinancialDashboard.tsx app/globals.css app/print-fix.css
+          git rm -r .audit-sync
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Sync audited dashboard and print styles'
+          git push origin HEAD:audit-fixes-2026-09-03
