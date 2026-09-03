@@ -177,6 +177,27 @@ export default function ReceiptDateRangeFilter() {
             ).find((item) => item.textContent?.trim().startsWith("Total:"));
             const totalStrong = totalContainer?.querySelector("strong");
             if (totalStrong) totalStrong.textContent = currency.format(total);
+
+            const printSummary = panel.querySelector<HTMLElement>(".print-table-summary");
+            if (printSummary) {
+              const summaryItems = Array.from(
+                printSummary.querySelectorAll<HTMLElement>("span")
+              );
+              const setSummaryValue = (label: string, value: string) => {
+                const item = summaryItems.find((summary) =>
+                  summary.textContent?.trim().startsWith(label)
+                );
+                const strong = item?.querySelector("strong");
+                if (strong) strong.textContent = value;
+              };
+
+              setSummaryValue("Lançamentos", visibleCount.toLocaleString("pt-BR"));
+              setSummaryValue(
+                "Valor médio",
+                currency.format(visibleCount ? total / visibleCount : 0)
+              );
+              setSummaryValue("Total recebido", currency.format(total));
+            }
           };
 
           filterBox
