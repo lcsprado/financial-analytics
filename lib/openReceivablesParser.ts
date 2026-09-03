@@ -1,5 +1,16 @@
 import * as XLSX from "xlsx";
-import type { OpenReceivable } from "./types";
+import type {
+  OpenReceivable,
+  ReceivableAllocation,
+  ReceivableAllocationNature,
+  ReceivableReconciliationIssue,
+} from "./types";
+
+export type OpenReceivablesParseResult = {
+  openReceivables: OpenReceivable[];
+  allocations: ReceivableAllocation[];
+  issues: ReceivableReconciliationIssue[];
+};
 
 function normalize(value: unknown) {
   return String(value ?? "")
@@ -145,8 +156,25 @@ function isStructuredHeader(row: unknown[], block: StructuredBlock) {
     && normalize(row[block.dueIndex]).includes("VENC");
 }
 
+function allocationNature(status: string, amount: number): ReceivableAllocationNature {
+  const normalized = normalize(status);
+  if (normalized.includes("SALDO")) return "balance_snapshot";
+  if (["PAGO", "PAGTO", "PAGAMENTO", "PARCIAL", "BAIXA"].some((term) => normalized.includes(term))) {
+    return "payment";
+  }
+  if (amount < 0 && ["DESCONTO", "CREDITO", "ABATIMENTO", "AJUSTE"].some((term) => normalized.includes(term))) {
+    return "credit_adjustment";
+  }
+  if (amount > 0 && ["DEBITO", "ACRESCIMO", "JURO", "MULTA", "AJUSTE"].some((term) => normalized.includes(term))) {
+    return "debit_adjustment";
+  }
+  return "unclassified";
+}
+
 function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
   const parsed: OpenReceivable[] = [];
+  const allocations: ReceivableAllocation[] = [];
+  const issues: ReceivableReconciliationIssue[] = [];
 
   for (const block of STRUCTURED_BLOCKS) {
     let currentClientName = "";
@@ -155,9 +183,7 @@ function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
     let currentTitle: OpenReceivable | null = null;
 
     const flushTitle = () => {
-      if (currentTitle && Number.isFinite(currentTitle.openValue) && currentTitle.openValue > 0) {
-        parsed.push(currentTitle);
-      }
+      if (currentTitle && Number.isFinite(currentTitle.openValue) && currentTitle.openValue > 0) parsed.push(currentTitle);
       currentTitle = null;
     };
 
@@ -220,26 +246,62 @@ function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
         continue;
       }
 
-      if (!currentTitle || noteText || dueDate || !value) continue;
+      if (!currentTitle || noteText || !value) continue;
 
-      if (statusNormalized.includes("SALDO") && value > 0) {
+      const nature = allocationNature(status, value);
+      const signedAmount = nature === "balance_snapshot" ? 0 : nature === "payment" && value > 0 ? -value : value;
+      const allocation: ReceivableAllocation = {
+        id: `allocation-${sheetName}-${block.clientIndex}-${rowIndex}`,
+        receivableId: currentTitle.id,
+        clientCode: currentTitle.clientCode,
+        clientName: currentTitle.clientName,
+        invoiceNumber: currentTitle.invoiceNumber,
+        titleNumber: currentTitle.titleNumber,
+        effectiveDate: dueDate || emissionDate,
+        amount: signedAmount,
+        sourceAmount: value,
+        nature,
+        description: status,
+        sourceSheet: sheetName,
+        sourceRow: rowIndex + 1,
+      };
+      allocations.push(allocation);
+
+      if (nature === "balance_snapshot" && value >= 0) {
+        currentTitle.reportedOpenValue = value;
         currentTitle.openValue = value;
         currentTitle.status = status;
         continue;
       }
 
-      const isPaymentAdjustment = value < 0
-        && ["PAGO", "PAGTO", "PAGAMENTO", "PARCIAL"].some((term) => statusNormalized.includes(term));
-      if (isPaymentAdjustment) {
-        currentTitle.openValue = Math.max(0, currentTitle.openValue + value);
+      if (nature !== "unclassified" || value < 0) {
+        const nextBalance = currentTitle.openValue + signedAmount;
+        if (nextBalance < -0.01) {
+          const message = `Baixas e ajustes excedem o valor do título em ${Math.abs(nextBalance).toFixed(2)}.`;
+          currentTitle.balanceIssue = message;
+          issues.push({
+            id: `issue-${currentTitle.id}-${rowIndex}`,
+            receivableId: currentTitle.id,
+            severity: "error",
+            message,
+          });
+        }
+        currentTitle.openValue = Math.max(0, nextBalance);
         currentTitle.status = [currentTitle.status, status].filter(Boolean).join("; ");
+      } else {
+        issues.push({
+          id: `issue-${currentTitle.id}-${rowIndex}`,
+          receivableId: currentTitle.id,
+          severity: "warning",
+          message: `Lançamento de ${value.toFixed(2)} sem natureza reconhecida na linha ${rowIndex + 1}.`,
+        });
       }
     }
 
     flushTitle();
   }
 
-  return parsed;
+  return { openReceivables: parsed, allocations, issues };
 }
 
 function parseGenericTable(rows: unknown[][], sheetName: string) {
@@ -294,11 +356,13 @@ function parseGenericTable(rows: unknown[][], sheetName: string) {
   return receivables;
 }
 
-export async function parseOpenReceivablesWorkbook(file: File): Promise<OpenReceivable[]> {
+export async function parseOpenReceivablesWorkbookDetailed(file: File): Promise<OpenReceivablesParseResult> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
   const sheetNames = workbook.SheetNames.filter(isReceivableSheet);
   const receivables: OpenReceivable[] = [];
+  const allocations: ReceivableAllocation[] = [];
+  const issues: ReceivableReconciliationIssue[] = [];
 
   for (const sheetName of sheetNames) {
     const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
@@ -308,8 +372,11 @@ export async function parseOpenReceivablesWorkbook(file: File): Promise<OpenRece
     });
 
     const structured = parseStructuredBlocks(rows, sheetName);
-    if (structured.length) receivables.push(...structured);
-    else receivables.push(...parseGenericTable(rows, sheetName));
+    if (structured.openReceivables.length || structured.allocations.length) {
+      receivables.push(...structured.openReceivables);
+      allocations.push(...structured.allocations);
+      issues.push(...structured.issues);
+    } else receivables.push(...parseGenericTable(rows, sheetName));
   }
 
   const unique = new Map<string, OpenReceivable>();
@@ -318,8 +385,14 @@ export async function parseOpenReceivablesWorkbook(file: File): Promise<OpenRece
     if (!unique.has(key)) unique.set(key, item);
   });
 
-  return [...unique.values()].sort((left, right) =>
+  const openReceivables = [...unique.values()].sort((left, right) =>
     left.dueDate.localeCompare(right.dueDate)
     || left.clientName.localeCompare(right.clientName, "pt-BR"),
   );
+
+  return { openReceivables, allocations, issues };
+}
+
+export async function parseOpenReceivablesWorkbook(file: File): Promise<OpenReceivable[]> {
+  return (await parseOpenReceivablesWorkbookDetailed(file)).openReceivables;
 }

@@ -7,14 +7,12 @@ import DashboardVisualControls from "@/components/DashboardVisualControls";
 import DashboardVisualPolishV1 from "@/components/DashboardVisualPolishV1";
 import InvoiceAnalyticsEnhancer from "@/components/InvoiceAnalyticsEnhancer";
 import InvoiceClientLinkManager from "@/components/InvoiceClientLinkManager";
-import InvoiceDateRangeFilter from "@/components/InvoiceDateRangeFilter";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
 import OverviewClientFilterEnhancer from "@/components/OverviewClientFilterEnhancer";
 import OverviewClientLinkManager from "@/components/OverviewClientLinkManager";
 import ReceiptClientIdentityRefresh from "@/components/ReceiptClientIdentityRefresh";
 import ReceiptClientLinkManager from "@/components/ReceiptClientLinkManager";
 import ReceiptClientsFallback from "@/components/ReceiptClientsFallback";
-import ReceiptDateRangeFilter from "@/components/ReceiptDateRangeFilter";
 import ReceiptForecastComparativeCleanup from "@/components/ReceiptForecastComparativeCleanup";
 import ReceiptForecastExecutivePrintPolishV17 from "@/components/ReceiptForecastExecutivePrintPolishV17";
 import ReceiptForecastFilterLayoutFixV22 from "@/components/ReceiptForecastFilterLayoutFixV22";
@@ -124,7 +122,6 @@ export default function PerformanceScopedEnhancers() {
       {scope === "invoices" ? (
         <>
           <InvoiceClientLinkManager />
-          <InvoiceDateRangeFilter />
           <InvoiceAnalyticsEnhancer />
         </>
       ) : null}
@@ -133,7 +130,6 @@ export default function PerformanceScopedEnhancers() {
         <>
           <ReceiptClientIdentityRefresh />
           <ReceiptClientLinkManager />
-          <ReceiptDateRangeFilter />
         </>
       ) : null}
 
