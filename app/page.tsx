@@ -6,6 +6,7 @@ import PerformanceScopedEnhancers from "@/components/PerformanceScopedEnhancers"
 import PrintButton from "@/components/PrintButton";
 import ReceiptClientIdentityNormalizer from "@/components/ReceiptClientIdentityNormalizer";
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
+import ReceiptForecastTableFitFix from "@/components/ReceiptForecastTableFitFix";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
 
 export default function Home() {
@@ -19,6 +20,7 @@ export default function Home() {
       <InvoiceClientCodeNormalizer />
       <ReceiptClientIdentityNormalizer />
       <ReceiptForecastEnhancerV13 />
+      <ReceiptForecastTableFitFix />
       <PerformanceScopedEnhancers />
     </>
   );
