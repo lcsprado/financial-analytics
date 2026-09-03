@@ -16,7 +16,7 @@ const nextConfig = {
           "font-src 'self' data:",
           "style-src 'self' 'unsafe-inline'",
           "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
-          "connect-src 'self' https://cloudflareinsights.com",
+          "connect-src 'self' https://cloudflareinsights.com https://mnzzulllazckqinudgoc.supabase.co",
           "worker-src 'self' blob:",
           "manifest-src 'self'",
           "upgrade-insecure-requests",
