@@ -1,6 +1,7 @@
 import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer";
 import FinancialDashboard from "@/components/FinancialDashboard";
 import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalizer";
+import InvoiceDateRangeTableFix from "@/components/InvoiceDateRangeTableFix";
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import PerformanceScopedEnhancers from "@/components/PerformanceScopedEnhancers";
 import PrintButton from "@/components/PrintButton";
@@ -18,6 +19,7 @@ export default function Home() {
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
       <InvoiceClientCodeNormalizer />
+      <InvoiceDateRangeTableFix />
       <ReceiptClientIdentityNormalizer />
       <ReceiptForecastEnhancerV13 />
       <ReceiptForecastTableFitFix />
