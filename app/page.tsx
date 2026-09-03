@@ -7,6 +7,7 @@ import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import PerformanceScopedEnhancers from "@/components/PerformanceScopedEnhancers";
 import PrintButton from "@/components/PrintButton";
 import ReceiptClientIdentityNormalizer from "@/components/ReceiptClientIdentityNormalizer";
+import ReceiptClientLinkFineControls from "@/components/ReceiptClientLinkFineControls";
 import ReceiptExcelExportEnhancer from "@/components/ReceiptExcelExportEnhancer";
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReceiptForecastTableFitFix from "@/components/ReceiptForecastTableFitFix";
@@ -21,6 +22,7 @@ export default function Home() {
       <ForecastNavigationStateSync />
       <HideOverviewClientFilter />
       <ReceiptExcelExportEnhancer />
+      <ReceiptClientLinkFineControls />
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
       <InvoiceClientCodeNormalizer />
