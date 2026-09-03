@@ -134,10 +134,13 @@ function sourceReceipts(receipts: Receipt[]) {
 }
 export function buildWeeks(month: Date): ForecastWeek[] {
   const first = new Date(month.getFullYear(), month.getMonth(), 1, 12);
-  let monday = addDays(first, (8 - first.getDay()) % 7);
+  const firstDay = first.getDay();
+  const offsetToMonday = firstDay === 0 ? 1 : firstDay === 6 ? 2 : 1 - firstDay;
+  let monday = addDays(first, offsetToMonday);
+  const monthEnd = endOfMonth(month);
   const weeks: ForecastWeek[] = [];
   let index = 0;
-  while (monday.getMonth() === month.getMonth() && monday.getFullYear() === month.getFullYear()) {
+  while (monday.getTime() <= monthEnd.getTime()) {
     const friday = addDays(monday, 4);
     weeks.push({
       id: toIsoDate(monday),
@@ -145,7 +148,7 @@ export function buildWeeks(month: Date): ForecastWeek[] {
       label: `Semana ${index + 1} · ${formatDate(toIsoDate(monday))} a ${formatDate(toIsoDate(friday))}`,
       start: monday,
       end: friday,
-      ownerMonth: monthKey(monday),
+      ownerMonth: monthKey(first),
     });
     monday = addDays(monday, 7);
     index += 1;
