@@ -101,3 +101,30 @@ Consolidar a base TESTE com tudo que está funcionando na PRODUÇÃO, preservand
 
 ## Próximo passo
 Abrir a Preview consolidada em navegador, executar a bateria funcional acima, corrigir regressões somente na branch `homologacao-consolidada-2026-09-08` e emitir recomendação final: `APTA PARA PROMOÇÃO`, `APTA COM RESSALVAS` ou `NÃO APTA PARA PRODUÇÃO`.
+
+## Validação funcional — rodada iniciada em 2026-09-08
+- Trabalho restrito à branch `homologacao-consolidada-2026-09-08`, partindo de `5f03b9917d3605526f57bb11264ca526983410be`.
+- Preview original conferida pela API Vercel: deployment `dpl_8zoMMiK1ktMrPuu36gkgMH23M6oN`, READY, ambiente Preview, mesma branch e commit.
+- URL testada: https://financial-analytics-h960wgplm-lcshprado.vercel.app/
+- O acesso inicial exigiu login Vercel; depois a página principal exibiu corretamente o login da aplicação. Ainda não há sessão autenticada de teste disponível.
+
+### Bug confirmado e correção
+- Acesso direto a `/importar` na Preview, sem sessão da aplicação, exibia os controles de upload. A rota não tinha `SandboxAuthGate`, ao contrário do dashboard; também não aplicava o fluxo de primeiro acesso.
+- Adicionado `app/importar/layout.tsx` reutilizando o gate existente. Isso protege a montagem da página, aplica sessão/primeiro acesso e mantém a sincronização autenticada da sandbox.
+- Corrigido o aviso da importação para informar que dados importados por administradores/atualizadores são sincronizados com a base de teste.
+- Reprodução original no navegador: `/` mostrou login; `/importar` mostrou as duas áreas de upload sem login. Console da importação sem erros/warnings capturados.
+- Reteste do build corrigido no navegador local em `http://127.0.0.1:3100/importar`: mostra login e não mostra os controles de upload.
+
+### Verificações executadas
+- Cinco testes existentes de `tests/receipt-forecast-weeks.test.ts`: todos passaram. Cobrem semanas completas, totais semanais/consolidados, recebimento de 02/09, início de setembro e filtros combinados.
+- Build local antes e após a correção: concluídos com sucesso, incluindo tipos. Warnings preexistentes de Autoprefixer no primeiro build.
+- Dependências locais instaladas com pnpm sem modificar o package-lock; a validação da Vercel com o lock do repositório ainda deve ser conferida no novo deployment.
+- Esses testes sintéticos NÃO aprovam valores financeiros das planilhas reais nem substituem a bateria autenticada.
+
+### Pendências e próximo passo
+- Publicar esta correção somente na branch de homologação e confirmar o novo deployment Preview.
+- Autenticar usuário de teste na aplicação para testar login positivo, logout, persistência/expiração da sessão, primeiro acesso e perfis.
+- Executar importações com planilhas de teste e conferir valores de origem contra FINR020, recebimentos, conciliação/vínculos, previsão, líquidos/saldos/totais/semanas, filtros, Cielo compartilhado, Excel e PDF.
+- Completar desktop/mobile, console/runtime e retestar o fluxo autenticado da rota corrigida.
+- Classificação provisória: NÃO APTA PARA PRODUÇÃO, pois a validação funcional financeira e autenticada permanece pendente.
+- Nenhuma alteração em main, backups, domínio ou deployment de produção.

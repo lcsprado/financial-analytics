@@ -256,7 +256,7 @@ export default function ImportarPage() {
 
           <div className="privacy-note">
             <CheckCircle2 size={18} />
-            <div><strong>Seus dados permanecem no navegador.</strong><span>Nenhuma planilha é enviada para um servidor.</span></div>
+            <div><strong>Ambiente de teste com base compartilhada.</strong><span>Os arquivos são processados no navegador. Para administradores e atualizadores, os dados importados são sincronizados com a base de teste.</span></div>
           </div>
 
           <div className="import-actions">
