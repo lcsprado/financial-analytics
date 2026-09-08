@@ -90,12 +90,8 @@ function indexByPriority(headers: unknown[], candidates: string[]) {
   return -1;
 }
 
-function isReceivableSheet(name: string) {
-  const normalized = normalize(name);
-  return normalized.includes("CONTAS A RECEBER")
-    || normalized.includes("TITULOS A RECEBER")
-    || normalized.includes("TITULOS RECEBER")
-    || normalized === "RECEBER";
+function isReceivableSheet(_name: string) {
+  return false;
 }
 
 function headerScore(row: unknown[]) {
