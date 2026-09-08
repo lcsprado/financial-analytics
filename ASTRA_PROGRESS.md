@@ -128,3 +128,13 @@ Abrir a Preview consolidada em navegador, executar a bateria funcional acima, co
 - Completar desktop/mobile, console/runtime e retestar o fluxo autenticado da rota corrigida.
 - Classificação provisória: NÃO APTA PARA PRODUÇÃO, pois a validação funcional financeira e autenticada permanece pendente.
 - Nenhuma alteração em main, backups, domínio ou deployment de produção.
+
+### Checkpoint publicado — correção verificada na Preview
+- Commit enviado à homologação: `2f14c0ec04973a6f79d4952d8960e0adc8863ab5` (`fix: proteger importação com autenticação da sandbox`).
+- Deployment da correção: `dpl_DovvAjSjXnTjE2qV2JJigsdLLczv`, READY, target Preview, commit e branch conferidos via Vercel.
+- Reteste no navegador em https://financial-analytics-ovpf9qoaz-lcshprado.vercel.app/importar: login obrigatório, nenhum controle de upload sem sessão, nenhum erro/warning capturado no console.
+- Login local inspecionado visualmente em 390 x 844; campos e botão legíveis. Isso não valida o dashboard mobile autenticado.
+- Este checkpoint também preserva o padrão LF dos arquivos alterados pelo conector.
+- URL estável da homologação: https://financial-analytics-git-homologacao-consolidad-cc10ce-lcshprado.vercel.app/
+- Próximo passo obrigatório: abrir essa URL estável, entrar com usuário da sandbox e executar a bateria autenticada/financeira listada acima. A solicitação de autenticação foi apresentada ao usuário; não foram fornecidas credenciais nem obtida sessão da aplicação nesta rodada.
+- Não promover. Classificação atual: NÃO APTA PARA PRODUÇÃO por validação incompleta.
