@@ -6,55 +6,98 @@ Consolidar a base TESTE com tudo que está funcionando na PRODUÇÃO, preservand
 ## Ambientes confirmados
 - PRODUÇÃO: `main`
 - Commit de produção no início da consolidação: `2f6fed3d1e47f58fd7a2ff027b5e0aad80d3c592`
-- TESTE: `feature/login-base-online`
+- TESTE original: `feature/login-base-online`
 - Commit da TESTE no início da consolidação: `61396073e9309fb8f310dcc38f0b84d4faa188fc`
 - Merge base histórico: `27f876f0cbe3abc0829b9c144aba49cfaf0f28d1`
+- Branch consolidada: `homologacao-consolidada-2026-09-08`
+- Commit de consolidação: `81426bb58ce887fd6c6161afbb38ef79f9a839b9`
 
 ## Backups
 - PRODUÇÃO: `backup-pre-astra-2026-09-08`
 - TESTE: `backup-teste-pre-integracao-2026-09-08`
-- Branch de trabalho: `homologacao-consolidada-2026-09-08`
+- Nenhuma branch de backup deve ser alterada.
 
 ## Divergência inicial
-- TESTE possui 48 commits exclusivos em relação à PRODUÇÃO.
-- PRODUÇÃO possui 24 commits exclusivos em relação à TESTE.
+- TESTE possuía 48 commits exclusivos em relação à PRODUÇÃO.
+- PRODUÇÃO possuía 24 commits exclusivos em relação à TESTE.
 
-## Principais recursos exclusivos da TESTE identificados
+## Estado após consolidação
+- A branch consolidada contém integralmente o commit atual de PRODUÇÃO como ancestral.
+- Comparação `main -> homologacao-consolidada-2026-09-08`: `behind_by = 0`.
+- Portanto, nenhuma alteração atual da PRODUÇÃO ficou faltando na branch consolidada no momento da integração.
+- A PRODUÇÃO (`main`) não foi alterada.
+
+## Recursos da TESTE preservados
 - Autenticação/sandbox (`SandboxAuthGate`).
 - Administração de usuários da base TESTE.
 - Fluxo de primeiro acesso e senha temporária.
-- Integração com Supabase para a sandbox.
+- Integração autenticada com Supabase na sandbox.
 - Sincronização/hidratação de dados compartilhados da Cielo.
 - Modo e refinamentos mobile específicos da sandbox.
 - Registro/exibição de autor em ajustes de previsão.
 - Revalidação de acesso e atualização direcionada do dashboard.
+- Ajustes de layout da previsão existentes na TESTE.
 
-## Principais avanços exclusivos da PRODUÇÃO identificados
+## Avanços atuais da PRODUÇÃO incorporados
 - Correções recentes de conciliação de contas a receber / FINR020.
 - Correções de faixa de datas em recebimentos e emissões.
 - Correções de semanas da previsão entre meses.
-- Ajustes de layout/tabela da previsão.
+- Ajustes atuais de layout/tabela da previsão.
 - Sincronização de navegação da previsão.
 - Controles finos de vínculo de clientes nos recebimentos.
 - Exportação Excel formatada dos recebimentos.
-- Correções de impressão e filtros.
-- Ajustes recentes de CSP/Supabase e parsers.
+- Correções atuais de impressão e filtros.
+- Ajustes recentes de CSP/Supabase, parsers e importação.
 
-## Arquivos com sobreposição relevante entre as duas linhas
-- `app/page.tsx`
-- `components/PerformanceScopedEnhancers.tsx`
-- `components/ReceiptDateRangeFilter.tsx`
-- `lib/forecastManualAdjustments.ts`
-- `components/ReceiptForecastFilterLayoutFixV22.tsx`
+## Resolução das principais sobreposições
+- `app/page.tsx`: combinados os wrappers da sandbox com todos os enhancers atuais da PRODUÇÃO.
+- `components/PerformanceScopedEnhancers.tsx`: preservado o autor dos ajustes e o carregamento adiado dos enhancers de emissões da TESTE; mantida a decisão atual da PRODUÇÃO de não remontar os filtros de faixa de data antigos nesse componente.
+- `components/ReceiptDateRangeFilter.tsx`: mantida a versão atual da PRODUÇÃO.
+- `components/ReceiptForecastFilterLayoutFixV22.tsx`: preservada a evolução específica da TESTE.
+- `lib/forecastManualAdjustments.ts`: mantida a tabela/fluxo autenticado da TESTE (`forecast_manual_adjustments`), e NÃO a tabela de produção, para impedir que a homologação escreva nos ajustes de produção. A adaptação final para promoção deve ser revisada explicitamente.
+
+## Vercel / build
+- Preview consolidada gerada pela Vercel: `financial-analytics-git-homologacao-consolidad-cc10ce-lcshprado.vercel.app`
+- Deployment validado: `dpl_HDcxkwFBjxa5ZfacK24fwwvfmvYJ`
+- Estado: `READY`.
+- `next build` concluído com sucesso.
+- Type checking concluído no build.
+- Apenas warnings existentes de Autoprefixer sobre `end` vs `flex-end`; não bloquearam o build.
+- Rotas geradas incluem `/`, `/importar` e `/api/dashboard-test/users`.
+
+## Validações já concluídas
+- PRODUÇÃO preservada e sem alteração.
+- Backup de PRODUÇÃO existente.
+- Backup da TESTE criado.
+- PRODUÇÃO incorporada na homologação.
+- Homologação está `behind_by = 0` em relação a `main`.
+- Build da aplicação concluído com sucesso na Vercel.
+- Preview da homologação em estado READY.
+
+## Validações ainda pendentes — obrigatórias antes de qualquer promoção
+- Login, logout, primeiro acesso, troca/redefinição de senha e expiração/desativação de usuário.
+- Carregamento inicial após autenticação.
+- Importação das planilhas reais de teste.
+- FINR020 / conciliação de contas a receber.
+- Recebimentos e filtros por datas.
+- Vínculos de clientes e controles finos.
+- Previsão de recebimentos, semanas, ajustes manuais e autor dos ajustes.
+- Cielo compartilhado.
+- Totais, saldos, líquidos, agrupamentos, duplicidades e KPIs.
+- Exportação Excel.
+- Impressão/PDF.
+- Navegação entre telas.
+- Desktop e mobile.
+- Console do navegador e erros de runtime.
 
 ## Regras de segurança
 - NÃO alterar `main` nesta etapa.
 - NÃO alterar as branches de backup.
 - NÃO fazer force push.
 - NÃO trocar domínio de produção.
-- NÃO promover a homologação para produção sem validação posterior.
-- Em conflito, preservar comportamento comprovadamente correto da PRODUÇÃO por padrão, mantendo recursos intencionais da TESTE quando compatíveis.
+- NÃO promover a homologação para produção sem validação funcional posterior.
 - Mudanças em valores, saldos, previsões, recebimentos, duplicidades ou agrupamentos exigem validação funcional específica.
+- A homologação deve continuar usando dados/tabelas de TESTE até a etapa explícita de promoção.
 
 ## Próximo passo
-Trazer PRODUÇÃO -> `homologacao-consolidada-2026-09-08`, resolver sobreposições de forma controlada e então executar validação de build/runtime e fluxos financeiros antes de qualquer promoção.
+Abrir a Preview consolidada em navegador, executar a bateria funcional acima, corrigir regressões somente na branch `homologacao-consolidada-2026-09-08` e emitir recomendação final: `APTA PARA PROMOÇÃO`, `APTA COM RESSALVAS` ou `NÃO APTA PARA PRODUÇÃO`.
