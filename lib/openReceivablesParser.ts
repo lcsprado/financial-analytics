@@ -171,7 +171,36 @@ function allocationNature(status: string, amount: number): ReceivableAllocationN
   return "unclassified";
 }
 
-function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
+function cellHasFormula(sheet: XLSX.WorkSheet, rowIndex: number, columnIndex: number) {
+  const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+  const cell = sheet[address];
+  return Boolean(cell && typeof cell.f === "string" && cell.f.trim());
+}
+
+function isComputedSummaryRow(
+  sheet: XLSX.WorkSheet,
+  row: unknown[],
+  rowIndex: number,
+  block: StructuredBlock,
+) {
+  const note = normalize(row[block.invoiceIndex]);
+  const status = normalize(row[block.statusIndex]);
+  const formulaValue = cellHasFormula(sheet, rowIndex, block.valueIndex);
+
+  if (note === "TOTAL" || note === "SUBTOTAL" || status === "TOTAL" || status === "SUBTOTAL") return true;
+  return !note && formulaValue;
+}
+
+function issueContext(title: OpenReceivable, sourceRow: number) {
+  const reference = title.invoiceNumber
+    ? `NF ${title.invoiceNumber}`
+    : title.titleNumber
+      ? `título ${title.titleNumber}`
+      : "título sem referência";
+  return `${title.clientName} • ${reference} • linha ${sourceRow}`;
+}
+
+function parseStructuredBlocks(rows: unknown[][], sheetName: string, sheet: XLSX.WorkSheet) {
   const parsed: OpenReceivable[] = [];
   const allocations: ReceivableAllocation[] = [];
   const issues: ReceivableReconciliationIssue[] = [];
@@ -208,7 +237,7 @@ function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
 
       const noteText = text(row[block.invoiceIndex]);
       const noteNormalized = normalize(noteText);
-      if (noteNormalized === "TOTAL") {
+      if (noteNormalized === "TOTAL" || noteNormalized === "SUBTOTAL") {
         flushTitle();
         currentClientName = "";
         currentClientCode = "";
@@ -220,7 +249,6 @@ function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
       const dueDate = excelDateToISO(row[block.dueIndex]);
       const value = numeric(row[block.valueIndex]);
       const status = text(row[block.statusIndex]);
-      const statusNormalized = normalize(status);
 
       const isTitleRow = Boolean(noteText)
         && noteNormalized !== "NOTA"
@@ -247,6 +275,7 @@ function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
       }
 
       if (!currentTitle || noteText || !value) continue;
+      if (isComputedSummaryRow(sheet, row, rowIndex, block)) continue;
 
       const nature = allocationNature(status, value);
       const signedAmount = nature === "balance_snapshot" ? 0 : nature === "payment" && value > 0 ? -value : value;
@@ -277,7 +306,7 @@ function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
       if (nature !== "unclassified" || value < 0) {
         const nextBalance = currentTitle.openValue + signedAmount;
         if (nextBalance < -0.01) {
-          const message = `Baixas e ajustes excedem o valor do título em ${Math.abs(nextBalance).toFixed(2)}.`;
+          const message = `Baixas e ajustes excedem o valor do título em ${Math.abs(nextBalance).toFixed(2)} (${issueContext(currentTitle, rowIndex + 1)}).`;
           currentTitle.balanceIssue = message;
           issues.push({
             id: `issue-${currentTitle.id}-${rowIndex}`,
@@ -293,7 +322,7 @@ function parseStructuredBlocks(rows: unknown[][], sheetName: string) {
           id: `issue-${currentTitle.id}-${rowIndex}`,
           receivableId: currentTitle.id,
           severity: "warning",
-          message: `Lançamento de ${value.toFixed(2)} sem natureza reconhecida na linha ${rowIndex + 1}.`,
+          message: `Lançamento de ${value.toFixed(2)} sem natureza reconhecida (${issueContext(currentTitle, rowIndex + 1)}).`,
         });
       }
     }
@@ -365,13 +394,14 @@ export async function parseOpenReceivablesWorkbookDetailed(file: File): Promise<
   const issues: ReceivableReconciliationIssue[] = [];
 
   for (const sheetName of sheetNames) {
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       defval: "",
       raw: true,
     });
 
-    const structured = parseStructuredBlocks(rows, sheetName);
+    const structured = parseStructuredBlocks(rows, sheetName, sheet);
     if (structured.openReceivables.length || structured.allocations.length) {
       receivables.push(...structured.openReceivables);
       allocations.push(...structured.allocations);
