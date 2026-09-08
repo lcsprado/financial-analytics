@@ -11,7 +11,16 @@ const DEFAULT_META: PrintReportMeta = {
   title: "Relatório financeiro",
   filters: "Todos os dados disponíveis",
   generatedAt: "",
+  source: "Bases locais importadas",
+  scope: "",
+  truncated: false,
 };
+
+function reportSource(key: ReportKey) {
+  if (key === "invoices") return "FINR020 importada neste navegador";
+  if (key === "receipts" || key === "forecast") return "Conciliação/Contas a Receber importada neste navegador";
+  return "FINR020 e Conciliação importadas neste navegador";
+}
 
 function normalize(value: string) {
   return value
@@ -121,12 +130,19 @@ export default function PrintButton() {
       : document.querySelector(".topbar-title h1")?.textContent?.trim() || "Painel financeiro";
     const reportKey = reportKeyFromTitle(currentTitle, forecastActive);
     const filters = forecastActive ? forecastFilters() : standardFilters();
+    const pagination = document.querySelector<HTMLElement>(".panel:not([hidden]) .table-pagination");
+    const scope = pagination?.dataset.printScope ?? "";
+    const scopeValues = scope.match(/(\d+)\s+de\s+(\d+)/i);
+    const truncated = Boolean(scopeValues && Number(scopeValues[1]) < Number(scopeValues[2]));
 
     flushSync(() => {
       setMeta({
         title: currentTitle,
         filters: filters || "Todos os dados disponíveis",
         generatedAt: generatedAtLabel(new Date()),
+        source: reportSource(reportKey),
+        scope: scope ? `${scope} registros` : "todos os dados dos filtros aplicados",
+        truncated,
       });
     });
 

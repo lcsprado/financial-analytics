@@ -148,6 +148,15 @@ button { cursor: pointer; }
 .insight-strip strong { grid-row: span 2; align-self: center; font-size: 18px; }
 .insight-strip small { color: #abb1be; font-size: 9px; }
 
+.native-date-filter { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 14px; padding: 12px; border: 1px solid #e6e9f1; border-radius: 10px; background: #f8f9fd; }
+.native-date-filter > div { margin-right: auto; display: flex; flex-direction: column; align-self: center; }
+.native-date-filter > div strong { font-size: 13px; }
+.native-date-filter > div small { margin-top: 3px; color: #7e879b; font-size: 10px; }
+.native-date-filter label { display: flex; flex-direction: column; gap: 5px; }
+.native-date-filter label span { color: #8b93a5; font-size: 9px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; }
+.native-date-filter input { height: 34px; padding: 0 10px; color: #50596c; background: #fff; border: 1px solid #e6e9f0; border-radius: 8px; font-size: 12px; font-weight: 600; }
+.native-date-filter button { height: 34px; padding: 0 11px; border: 0; background: transparent; color: #5d72f6; font-size: 11px; font-weight: 800; cursor: pointer; }
+.print-full-table { display: none; }
 .table-toolbar { margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; gap: 14px; }
 .table-toolbar > span { color: var(--muted); font-size: 11px; }
 .search-box { width: min(420px, 100%); height: 38px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 9px; background: #fafbfc; }
@@ -168,6 +177,12 @@ td.number strong { color: #343b4d; }
 .negative { color: var(--red) !important; }
 .muted { color: #a4abba !important; }
 .table-note { margin: 11px 0 0; color: var(--muted); font-size: 10px; }
+.table-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+.table-pagination > div { display: flex; align-items: center; gap: 8px; }
+.table-pagination button { min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; color: #4e576a; background: #fff; font-weight: 700; }
+.table-pagination button:disabled { opacity: .45; cursor: not-allowed; }
+.table-pagination b { color: var(--text); font-size: 10px; }
+.table-export { white-space: nowrap; }
 .clickable-row { cursor: pointer; }
 .table-progress { width: 150px; height: 5px; overflow: hidden; border-radius: 5px; background: #eef0f5; }
 .table-progress i { display: block; height: 100%; border-radius: inherit; background: var(--primary); }

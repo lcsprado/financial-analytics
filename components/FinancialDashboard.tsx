@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleDollarSign,
+  Download,
   FileBarChart,
   FileSpreadsheet,
   LayoutDashboard,
@@ -39,6 +40,9 @@ import { calculateDashboard, getAvailableYears } from "@/lib/analytics";
 import { compactCurrency, currency, formatDate, integer, percent } from "@/lib/format";
 import { createDemoData } from "@/lib/demo";
 import { parseInvoiceWorkbook, parseReceiptWorkbook } from "@/lib/parsers";
+import { parseOpenReceivablesWorkbookDetailed } from "@/lib/openReceivablesParser";
+import { downloadCsv } from "@/lib/tableExport";
+import { FORECAST_VIEW_EVENT, forecastViewEvent, resolveNavigationState } from "@/lib/viewState";
 import {
   CHANNEL_DATA_EVENT,
   clearOfflineData,
@@ -77,6 +81,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const PIE_COLORS = ["#5d72f6", "#22c7a9", "#f8b84e", "#ef718a", "#9b7cf7", "#58b9ee"];
 const INCLUDE_CHANNEL_EVENT = "financial-analytics-receipt-channels-include-changed";
+const PAGE_SIZE = 100;
 const printVariation = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 1,
   signDisplay: "exceptZero",
@@ -216,7 +221,7 @@ function EmptyState({ onImport, onDemo }: { onImport: () => void; onDemo: () => 
       <span className="eyebrow">FINANCIAL ANALYTICS</span>
       <h1>Transforme suas planilhas em decisões financeiras.</h1>
       <p>
-        Importe a FINR020 e a planilha de conciliação. Os dados são processados no seu navegador e não são enviados a um servidor.
+        Importe a FINR020 e a planilha de conciliação. O conteúdo das planilhas não é enviado: leitura, cálculos e filtros acontecem neste navegador.
       </p>
       <div className="empty-actions">
         <button className="primary-button" onClick={onImport}><UploadCloud size={18} /> Importar planilhas</button>
@@ -251,6 +256,7 @@ export default function FinancialDashboard() {
   const demo = useMemo(() => createDemoData(), []);
   const [data, setData] = useState<ImportState>({ invoices: [], receipts: [] });
   const [view, setView] = useState<View>("overview");
+  const [forecastActive, setForecastActive] = useState(false);
   const [filter, setFilter] = useState<PeriodFilter>({ year: 2026, month: "all", client: "" });
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState<ImportKind | null>(null);
@@ -261,6 +267,27 @@ export default function FinancialDashboard() {
   const [includeReceiptChannels, setIncludeReceiptChannels] = useState(false);
   const [storageConsent, setStorageConsentState] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [invoicePage, setInvoicePage] = useState(0);
+  const [receiptPage, setReceiptPage] = useState(0);
+  const [invoiceStartDate, setInvoiceStartDate] = useState("");
+  const [invoiceEndDate, setInvoiceEndDate] = useState("");
+  const [receiptStartDate, setReceiptStartDate] = useState("");
+  const [receiptEndDate, setReceiptEndDate] = useState("");
+
+  useEffect(() => {
+    const onForecastView = (event: Event) => {
+      const active = Boolean((event as CustomEvent<{ active?: boolean }>).detail?.active);
+      setForecastActive(active);
+    };
+    window.addEventListener(FORECAST_VIEW_EVENT, onForecastView);
+    return () => window.removeEventListener(FORECAST_VIEW_EVENT, onForecastView);
+  }, []);
+
+  function selectView(nextView: View) {
+    setForecastActive(false);
+    window.dispatchEvent(forecastViewEvent(false));
+    setView(nextView);
+  }
 
   useEffect(() => {
     let active = true;
@@ -332,7 +359,13 @@ export default function FinancialDashboard() {
       setReceiptChannels([]);
       setSearch("");
       setView("overview");
-      setFilter({ year: 2026, month: "all", client: "" });
+      setFilter({ year: "all", month: "all", client: "" });
+      setInvoiceStartDate("");
+      setInvoiceEndDate("");
+      setReceiptStartDate("");
+      setReceiptEndDate("");
+      setInvoicePage(0);
+      setReceiptPage(0);
       setNotice("Os dados salvos neste dispositivo foram apagados.");
     };
     window.addEventListener(STORAGE_CONSENT_EVENT, handleConsent);
@@ -387,23 +420,40 @@ export default function FinancialDashboard() {
       if (kind === "invoices") {
         const invoices = await parseInvoiceWorkbook(file);
         setData((current) => ({ ...current, invoices, invoiceFileName: file.name }));
+        setSearch("");
+        setInvoiceStartDate("");
+        setInvoiceEndDate("");
+        setInvoicePage(0);
         await saveImportedFile("invoices", file);
         setNotice(`${integer.format(invoices.length)} emissões importadas com sucesso.`);
       } else {
-        const [receipts, channels] = await Promise.all([
+        const [receipts, channels, receivables] = await Promise.all([
           parseReceiptWorkbook(file),
           parseChannelWorkbook(file),
+          parseOpenReceivablesWorkbookDetailed(file),
         ]);
-        setData((current) => ({ ...current, receipts, receiptFileName: file.name }));
+        setData((current) => ({
+          ...current,
+          receipts,
+          openReceivables: receivables.openReceivables,
+          receivableAllocations: receivables.allocations,
+          receivableIssues: receivables.issues,
+          receiptFileName: file.name,
+        }));
         setReceiptChannels(channels.entries);
+        setSearch("");
+        setReceiptStartDate("");
+        setReceiptEndDate("");
+        setReceiptPage(0);
         await Promise.all([
           saveImportedFile("receipts", file),
           saveChannelPayload(channels),
         ]);
         window.dispatchEvent(new Event(CHANNEL_DATA_EVENT));
         setNotice(
-          `${integer.format(receipts.length)} recebimentos e `
-          + `${integer.format(channels.entries.length)} lançamentos Cielo/PIX importados com sucesso.`,
+          `${integer.format(receipts.length)} recebimentos, ${integer.format(receivables.openReceivables.length)} títulos abertos e `
+          + `${integer.format(receivables.allocations.length)} baixas/ajustes importados. `
+          + (receivables.issues.length ? `${integer.format(receivables.issues.length)} lançamento exige revisão.` : "Conciliação sem saldo negativo."),
         );
       }
     } catch (caught) {
@@ -426,24 +476,37 @@ export default function FinancialDashboard() {
     setReceiptChannels([]);
     setSearch("");
     setView("overview");
-    setFilter({ year: 2026, month: "all", client: "" });
+    setFilter({ year: "all", month: "all", client: "" });
+    setInvoiceStartDate("");
+    setInvoiceEndDate("");
+    setReceiptStartDate("");
+    setReceiptEndDate("");
+    setInvoicePage(0);
+    setReceiptPage(0);
   }
 
+  const normalizedSearch = search.trim().toLowerCase();
   const invoiceRows = dashboard.filteredInvoices
-    .filter((item) => `${item.invoiceNumber} ${item.clientName} ${item.clientCode}`.toLowerCase().includes(search.toLowerCase()))
+    .filter((item) => !invoiceStartDate || item.emissionDate >= invoiceStartDate)
+    .filter((item) => !invoiceEndDate || item.emissionDate <= invoiceEndDate)
+    .filter((item) => `${item.invoiceNumber} ${item.clientName} ${item.clientCode}`.toLowerCase().includes(normalizedSearch))
     .sort((a, b) => b.emissionDate.localeCompare(a.emissionDate));
 
   const receiptRows = dashboard.filteredReceipts
-    .filter((item) => `${item.description} ${item.bank}`.toLowerCase().includes(search.toLowerCase()))
+    .filter((item) => !receiptStartDate || item.receiptDate >= receiptStartDate)
+    .filter((item) => !receiptEndDate || item.receiptDate <= receiptEndDate)
+    .filter((item) => `${item.description} ${item.bank} ${item.invoiceNumbers.join(" ")}`.toLowerCase().includes(normalizedSearch))
     .sort((a, b) => b.receiptDate.localeCompare(a.receiptDate));
+  const invoicePageCount = Math.max(1, Math.ceil(invoiceRows.length / PAGE_SIZE));
+  const receiptPageCount = Math.max(1, Math.ceil(receiptRows.length / PAGE_SIZE));
+  const safeInvoicePage = Math.min(invoicePage, invoicePageCount - 1);
+  const safeReceiptPage = Math.min(receiptPage, receiptPageCount - 1);
+  const visibleInvoiceRows = invoiceRows.slice(safeInvoicePage * PAGE_SIZE, (safeInvoicePage + 1) * PAGE_SIZE);
+  const visibleReceiptRows = receiptRows.slice(safeReceiptPage * PAGE_SIZE, (safeReceiptPage + 1) * PAGE_SIZE);
 
-  const titleByView: Record<View, string> = {
-    overview: "Visão geral",
-    invoices: "Emissões",
-    receipts: "Recebimentos",
-    clients: "Clientes",
-    import: "Importação",
-  };
+  useEffect(() => { setInvoicePage(0); setReceiptPage(0); }, [filter, search, invoiceStartDate, invoiceEndDate, receiptStartDate, receiptEndDate]);
+
+  const navigation = resolveNavigationState(view, forecastActive);
 
   return (
     <div className="app-shell">
@@ -461,11 +524,12 @@ export default function FinancialDashboard() {
             return (
               <button
                 key={item.id}
-                className={view === item.id ? "active" : ""}
+                className={navigation.activeItem === item.id ? "active" : ""}
                 onClick={() => {
-                  setView(item.id);
+                  selectView(item.id);
                   setSidebarOpen(false);
                 }}
+                aria-current={navigation.activeItem === item.id ? "page" : undefined}
               >
                 <Icon size={19} />
                 {item.label}
@@ -487,12 +551,12 @@ export default function FinancialDashboard() {
         <header className="topbar">
           <div className="topbar-title">
             <button className="menu-button" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu /></button>
-            <div><span>PAINEL FINANCEIRO</span><h1>{titleByView[view]}</h1></div>
+            <div><span>PAINEL FINANCEIRO</span><h1>{navigation.title}</h1></div>
           </div>
           <div className="topbar-actions">
             {hasData && (
               <>
-                <button className="ghost-button compact" onClick={() => setView("import")}><UploadCloud size={17} /> Atualizar bases</button>
+                <button className="ghost-button compact" onClick={() => selectView("import")}><UploadCloud size={17} /> Atualizar bases</button>
                 <button className="icon-button" onClick={clearData} title="Limpar dados"><RefreshCcw size={18} /></button>
               </>
             )}
@@ -501,7 +565,7 @@ export default function FinancialDashboard() {
 
         <div className="content-area">
           {!hasData && view !== "import" ? (
-            <EmptyState onImport={() => setView("import")} onDemo={loadDemo} />
+            <EmptyState onImport={() => selectView("import")} onDemo={loadDemo} />
           ) : (
             <>
               {error && <div className="alert error"><X size={18} /> {error}<button onClick={() => setError(null)}>Fechar</button></div>}
@@ -541,7 +605,7 @@ export default function FinancialDashboard() {
                     </div>
                   </label>
                   {(filter.year !== "all" || filter.month !== "all" || filter.client) && (
-                    <button className="clear-filter" onClick={() => setFilter({ year: years[0] ?? "all", month: "all", client: "" })}>Limpar</button>
+                    <button className="clear-filter" onClick={() => setFilter({ year: "all", month: "all", client: "" })}>Limpar</button>
                   )}
                 </section>
               )}
@@ -663,24 +727,37 @@ export default function FinancialDashboard() {
                     <span>Total bruto <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.grossValue, 0))}</strong></span>
                     <span>Total líquido <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.netValue, 0))}</strong></span>
                   </div>
+                  <div className="native-date-filter" data-invoice-date-filter>
+                    <div><strong>Período das emissões</strong><small>Filtra antes da paginação, exportação e impressão</small></div>
+                    <label><span>Data inicial</span><input type="date" value={invoiceStartDate} max={invoiceEndDate || undefined} onChange={(event) => setInvoiceStartDate(event.target.value)} /></label>
+                    <label><span>Data final</span><input type="date" value={invoiceEndDate} min={invoiceStartDate || undefined} onChange={(event) => setInvoiceEndDate(event.target.value)} /></label>
+                    {(invoiceStartDate || invoiceEndDate) && <button type="button" onClick={() => { setInvoiceStartDate(""); setInvoiceEndDate(""); }}>Limpar período</button>}
+                  </div>
                   <div className="table-toolbar">
                     <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por NF, cliente ou código" /></div>
                     <div style={{ marginLeft: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", width: "32%", minWidth: 320 }}>
                       <span style={{ textAlign: "right" }}>Total bruto: <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.grossValue, 0))}</strong></span>
                       <span style={{ textAlign: "right" }}>Total líquido: <strong>{currency.format(invoiceRows.reduce((sum, item) => sum + item.netValue, 0))}</strong></span>
                     </div>
+                    <button className="ghost-button compact table-export" type="button" onClick={() => downloadCsv("emissoes-filtradas.csv", ["Emissão", "NF", "Cliente", "Código", "Valor bruto", "Valor líquido"], invoiceRows.map((item) => [item.emissionDate, item.invoiceNumber, item.clientName, item.clientCode, item.grossValue, item.netValue]))}><Download size={15} /> Exportar filtrado</button>
                   </div>
                   <div className="table-wrap">
                     <table>
                       <thead><tr><th>Emissão</th><th>NF</th><th>Cliente</th><th>Código</th><th className="number">Valor bruto</th><th className="number">Valor líquido</th></tr></thead>
                       <tbody>
-                        {invoiceRows.slice(0, 500).map((item) => (
+                        {visibleInvoiceRows.map((item) => (
                           <tr key={item.id}><td>{formatDate(item.emissionDate)}</td><td><span className="nf-pill">{item.invoiceNumber || "—"}</span></td><td className="client-cell">{item.clientName}</td><td>{item.clientCode || "—"}</td><td className="number"><strong>{currency.format(item.grossValue)}</strong></td><td className="number">{currency.format(item.netValue)}</td></tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  {invoiceRows.length > 500 && <p className="table-note">Exibindo os 500 registros mais recentes. Use os filtros para reduzir o resultado.</p>}
+                  <div className="print-full-table" aria-hidden="true">
+                    <table>
+                      <thead><tr><th>Emissão</th><th>NF</th><th>Cliente</th><th>Código</th><th className="number">Valor bruto</th><th className="number">Valor líquido</th></tr></thead>
+                      <tbody>{invoiceRows.map((item) => <tr key={`print-${item.id}`}><td>{formatDate(item.emissionDate)}</td><td>{item.invoiceNumber || "—"}</td><td>{item.clientName}</td><td>{item.clientCode || "—"}</td><td className="number">{currency.format(item.grossValue)}</td><td className="number">{currency.format(item.netValue)}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                  <div className="table-pagination" data-print-scope={`${invoiceRows.length} de ${invoiceRows.length}`}><span>Exibindo {integer.format(safeInvoicePage * PAGE_SIZE + (visibleInvoiceRows.length ? 1 : 0))}–{integer.format(safeInvoicePage * PAGE_SIZE + visibleInvoiceRows.length)} de {integer.format(invoiceRows.length)} registros</span><div><button type="button" disabled={safeInvoicePage === 0} onClick={() => setInvoicePage((page) => Math.max(0, page - 1))}>Anterior</button><b>{safeInvoicePage + 1} / {invoicePageCount}</b><button type="button" disabled={safeInvoicePage >= invoicePageCount - 1} onClick={() => setInvoicePage((page) => Math.min(invoicePageCount - 1, page + 1))}>Próxima</button></div></div>
                 </Panel>
               )}
 
@@ -691,21 +768,34 @@ export default function FinancialDashboard() {
                     <span>Valor médio <strong>{currency.format(receiptRows.length ? receiptRows.reduce((sum, item) => sum + item.amount, 0) / receiptRows.length : 0)}</strong></span>
                     <span>Total recebido <strong>{currency.format(receiptRows.reduce((sum, item) => sum + item.amount, 0))}</strong></span>
                   </div>
+                  <div className="native-date-filter" data-receipt-date-filter>
+                    <div><strong>Período dos recebimentos</strong><small>Filtra antes da paginação, exportação e impressão</small></div>
+                    <label><span>Data inicial</span><input type="date" value={receiptStartDate} max={receiptEndDate || undefined} onChange={(event) => setReceiptStartDate(event.target.value)} /></label>
+                    <label><span>Data final</span><input type="date" value={receiptEndDate} min={receiptStartDate || undefined} onChange={(event) => setReceiptEndDate(event.target.value)} /></label>
+                    {(receiptStartDate || receiptEndDate) && <button type="button" onClick={() => { setReceiptStartDate(""); setReceiptEndDate(""); }}>Limpar período</button>}
+                  </div>
                   <div className="table-toolbar">
                     <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por cliente, NF ou banco" /></div>
                     <span>Total: <strong>{currency.format(receiptRows.reduce((sum, item) => sum + item.amount, 0))}</strong></span>
+                    <button className="ghost-button compact table-export" type="button" onClick={() => downloadCsv("recebimentos-filtrados.csv", ["Recebimento", "Banco", "Descrição", "NF identificada", "Valor"], receiptRows.map((item) => [item.receiptDate, item.bank, item.description, item.invoiceNumbers.join(", "), item.amount]))}><Download size={15} /> Exportar filtrado</button>
                   </div>
                   <div className="table-wrap">
                     <table>
                       <thead><tr><th>Recebimento</th><th>Banco</th><th>Descrição</th><th>NF identificada</th><th className="number">Valor</th></tr></thead>
                       <tbody>
-                        {receiptRows.slice(0, 500).map((item) => (
+                        {visibleReceiptRows.map((item) => (
                           <tr key={item.id}><td>{formatDate(item.receiptDate)}</td><td><span className="bank-pill">{item.bank}</span></td><td className="description-cell">{item.description}</td><td>{item.invoiceNumbers.length ? item.invoiceNumbers.join(", ") : <span className="muted">Não identificada</span>}</td><td className={`number ${item.amount < 0 ? "negative" : ""}`}><strong>{currency.format(item.amount)}</strong></td></tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  {receiptRows.length > 500 && <p className="table-note">Exibindo os 500 lançamentos mais recentes. Use os filtros para reduzir o resultado.</p>}
+                  <div className="print-full-table" aria-hidden="true">
+                    <table>
+                      <thead><tr><th>Recebimento</th><th>Banco</th><th>Descrição</th><th>NF identificada</th><th className="number">Valor</th></tr></thead>
+                      <tbody>{receiptRows.map((item) => <tr key={`print-${item.id}`}><td>{formatDate(item.receiptDate)}</td><td>{item.bank}</td><td>{item.description}</td><td>{item.invoiceNumbers.join(", ") || "Não identificada"}</td><td className="number">{currency.format(item.amount)}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                  <div className="table-pagination" data-print-scope={`${receiptRows.length} de ${receiptRows.length}`}><span>Exibindo {integer.format(safeReceiptPage * PAGE_SIZE + (visibleReceiptRows.length ? 1 : 0))}–{integer.format(safeReceiptPage * PAGE_SIZE + visibleReceiptRows.length)} de {integer.format(receiptRows.length)} lançamentos</span><div><button type="button" disabled={safeReceiptPage === 0} onClick={() => setReceiptPage((page) => Math.max(0, page - 1))}>Anterior</button><b>{safeReceiptPage + 1} / {receiptPageCount}</b><button type="button" disabled={safeReceiptPage >= receiptPageCount - 1} onClick={() => setReceiptPage((page) => Math.min(receiptPageCount - 1, page + 1))}>Próxima</button></div></div>
                 </Panel>
               )}
 
@@ -727,7 +817,7 @@ export default function FinancialDashboard() {
                             return (
                               <tr key={item.name} className="clickable-row" onClick={() => {
                                 setFilter((current) => ({ ...current, client: item.name }));
-                                setView("overview");
+                                selectView("overview");
                               }}>
                                 <td>{index + 1}</td><td className="client-cell">{item.name}</td><td className="number"><strong>{currency.format(item.value)}</strong></td><td className="number">{percent.format(participation)}</td><td><div className="table-progress"><i style={{ width: `${participation * 100}%` }} /></div></td>
                               </tr>
@@ -768,10 +858,11 @@ export default function FinancialDashboard() {
                   <div className="import-results">
                     <div><span className="result-icon violet"><ReceiptText /></span><strong>{integer.format(data.invoices.length)}</strong><span>emissões carregadas</span></div>
                     <div><span className="result-icon green"><WalletCards /></span><strong>{integer.format(data.receipts.length)}</strong><span>recebimentos carregados</span></div>
-                    <div><span className="result-icon gold"><CheckCircle2 /></span><strong>{percent.format(dashboard.matchRate)}</strong><span>recebimentos com NF identificada</span></div>
+                    <div><span className="result-icon gold"><CheckCircle2 /></span><strong>{integer.format(data.openReceivables?.length ?? 0)}</strong><span>títulos com saldo em aberto</span></div>
                   </div>
-                  <div className="privacy-note"><CheckCircle2 size={18} /><div><strong>Seus dados permanecem no navegador.</strong><span>As planilhas são processadas localmente. Ao limpar os dados, o conteúdo armazenado neste navegador é removido.</span></div></div>
-                  <div className="import-actions"><button className="ghost-button" onClick={loadDemo}><FileBarChart size={17} /> Usar demonstração</button><button className="primary-button" onClick={() => setView("overview")} disabled={!hasData}><LayoutDashboard size={17} /> Abrir dashboard</button></div>
+                  {data.receivableIssues?.length ? <div className="alert error"><X size={18} /><div><strong>{integer.format(data.receivableIssues.length)} lançamento da razão exige revisão</strong>{data.receivableIssues.slice(0, 3).map((issue) => <span key={issue.id}>{issue.message}</span>)}</div></div> : null}
+                  <div className="privacy-note"><CheckCircle2 size={18} /><div><strong>O conteúdo das planilhas não é enviado.</strong><span>O processamento ocorre neste navegador. Com sua autorização, arquivos e análise ficam neste dispositivo por até 30 dias; “Limpar dados” exclui o conteúdo local. Não enviamos nomes, notas, valores ou linhas das planilhas para telemetria. Agrupamentos e ajustes permanecem locais e não são compartilhados.</span></div></div>
+                  <div className="import-actions"><button className="ghost-button" onClick={loadDemo}><FileBarChart size={17} /> Usar demonstração</button><button className="primary-button" onClick={() => selectView("overview")} disabled={!hasData}><LayoutDashboard size={17} /> Abrir dashboard</button></div>
                 </section>
               )}
             </>

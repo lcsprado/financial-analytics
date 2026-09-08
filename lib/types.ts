@@ -32,12 +32,46 @@ export type OpenReceivable = {
   openValue: number;
   status: string;
   sourceSheet: string;
+  reportedOpenValue?: number;
+  balanceIssue?: string;
+};
+
+export type ReceivableAllocationNature =
+  | "payment"
+  | "credit_adjustment"
+  | "debit_adjustment"
+  | "balance_snapshot"
+  | "unclassified";
+
+export type ReceivableAllocation = {
+  id: string;
+  receivableId: string;
+  clientCode: string;
+  clientName: string;
+  invoiceNumber: string;
+  titleNumber: string;
+  effectiveDate: string;
+  amount: number;
+  sourceAmount: number;
+  nature: ReceivableAllocationNature;
+  description: string;
+  sourceSheet: string;
+  sourceRow: number;
+};
+
+export type ReceivableReconciliationIssue = {
+  id: string;
+  receivableId: string;
+  severity: "warning" | "error";
+  message: string;
 };
 
 export type ImportState = {
   invoices: Invoice[];
   receipts: Receipt[];
   openReceivables?: OpenReceivable[];
+  receivableAllocations?: ReceivableAllocation[];
+  receivableIssues?: ReceivableReconciliationIssue[];
   invoiceFileName?: string;
   receiptFileName?: string;
 };

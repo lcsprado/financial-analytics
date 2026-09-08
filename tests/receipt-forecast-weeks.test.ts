@@ -87,17 +87,25 @@ test("recebimento real em 02/09 fecha o ciclo da semana 5 sem permanecer pendent
   assert.equal(rows.find((row) => row.weekId === "2026-08-31" && row.clientName === "Cliente Dia 02")?.status, "Recebido");
 });
 
-test("setembro não duplica previsões nem recebimentos de 01/09 a 04/09", () => {
+test("setembro/2026 começa pela semana completa de 31/08 a 04/09", () => {
   const actual = receipt("actual-sep-02", "2026-09-02", "Cliente Dia 02", 25_000);
   const receipts = [...historicalReceipts, actual];
   const history = buildHistory(receipts, new Date(2026, 7, 1, 12));
   const weeks = buildWeeks(new Date(2026, 8, 1, 12));
   const rows = buildRows(receipts, history, weeks);
 
-  assert.equal(weeks[0]?.id, "2026-09-07");
-  assert.equal(rows.some((row) => row.actual?.dates.includes("2026-09-02")), false);
-  assert.equal(rows.some((row) => row.estimatedDate >= "2026-09-01" && row.estimatedDate <= "2026-09-04"), false);
-  assert.equal(totals(rows).received, 0);
+  assert.deepEqual(
+    weeks.map((week) => [week.id, week.end.getFullYear(), week.end.getMonth() + 1, week.end.getDate(), week.ownerMonth]),
+    [
+      ["2026-08-31", 2026, 9, 4, "2026-09"],
+      ["2026-09-07", 2026, 9, 11, "2026-09"],
+      ["2026-09-14", 2026, 9, 18, "2026-09"],
+      ["2026-09-21", 2026, 9, 25, "2026-09"],
+      ["2026-09-28", 2026, 10, 2, "2026-09"],
+    ],
+  );
+  assert.equal(rows.some((row) => row.actual?.dates.includes("2026-09-02")), true);
+  assert.equal(totals(rows, "2026-08-31").received, 25_000);
 });
 
 test("semana, cliente, confiança e somente pendentes usam o mesmo filtro das linhas", () => {

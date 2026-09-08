@@ -3,6 +3,7 @@
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, LayoutDashboard, RefreshCcw, UploadCloud, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { parseInvoiceWorkbook, parseReceiptWorkbook } from "@/lib/parsers";
+import { parseOpenReceivablesWorkbookDetailed } from "@/lib/openReceivablesParser";
 import {
   parseChannelWorkbook,
 } from "@/components/ReceiptChannelSummary";
@@ -148,13 +149,17 @@ export default function ImportarPage() {
         await saveImportedFile("invoices", file);
         setNotice(`${invoices.length.toLocaleString("pt-BR")} emissões importadas com sucesso.`);
       } else {
-        const [receipts, channels] = await Promise.all([
+        const [receipts, channels, receivables] = await Promise.all([
           parseReceiptWorkbook(file),
           parseChannelWorkbook(file),
+          parseOpenReceivablesWorkbookDetailed(file),
         ]);
         next = {
           ...current,
           receipts,
+          openReceivables: receivables.openReceivables,
+          receivableAllocations: receivables.allocations,
+          receivableIssues: receivables.issues,
           receiptFileName: file.name,
         };
         await Promise.all([
@@ -163,8 +168,13 @@ export default function ImportarPage() {
         ]);
         window.dispatchEvent(new Event(CHANNEL_DATA_EVENT));
         setNotice(
-          `${receipts.length.toLocaleString("pt-BR")} recebimentos e `
-          + `${channels.entries.length.toLocaleString("pt-BR")} lançamentos Cielo/PIX importados com sucesso.`,
+          `${receipts.length.toLocaleString("pt-BR")} recebimentos, `
+          + `${receivables.openReceivables.length.toLocaleString("pt-BR")} títulos em aberto, `
+          + `${receivables.allocations.length.toLocaleString("pt-BR")} baixas/ajustes e `
+          + `${channels.entries.length.toLocaleString("pt-BR")} lançamentos Cielo/PIX importados. `
+          + (receivables.issues.length
+            ? `${receivables.issues.length.toLocaleString("pt-BR")} lançamento exige revisão.`
+            : "Conciliação sem saldo negativo."),
         );
       }
 

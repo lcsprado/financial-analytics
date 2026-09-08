@@ -2,7 +2,7 @@
 .print-table-summary { display: none; }
 
 @media print {
-  @page { size: A4 landscape; margin: 8mm 9mm; }
+  @page { size: A4 landscape; margin: 8mm 9mm 13mm; }
 
   html, body {
     background: #fff !important;
@@ -70,6 +70,15 @@
     white-space: nowrap;
     text-align: right;
   }
+  .print-report-warning { color: #9b5f00 !important; font-weight: 800; }
+  .print-report-page-number {
+    position: fixed;
+    right: 0;
+    bottom: -8mm;
+    color: #667084;
+    font-size: 7px;
+  }
+  .print-report-page-number .current-page::after { content: counter(page); }
 
   .panel, .kpi-card, .insight-strip, .client-summary-card,
   .import-results, .receipt-channel-summary { box-shadow: none !important; }
@@ -264,9 +273,27 @@
     break-after: avoid-page !important;
     page-break-after: avoid !important;
   }
-  .panel:has(.table-wrap) .table-toolbar {
+  .table-pagination {
+    display: flex !important;
+    break-inside: avoid !important;
+    margin-top: 5px !important;
+    color: #667084 !important;
+    font-size: 7px !important;
+  }
+  .table-pagination > div { display: none !important; }
+  .table-pagination::after {
+    content: "Abrangência impressa: " attr(data-print-scope) " registros";
+    margin-left: auto;
+    color: #9b5f00;
+    font-weight: 800;
+  }
+  .panel:has(.table-wrap) .table-toolbar,
+  .panel:has(.table-wrap) .native-date-filter {
     display: none !important;
   }
+  .panel:has(.print-full-table) > .table-wrap { display: none !important; }
+  .print-full-table { display: block !important; overflow: visible !important; }
+  .print-full-table table { min-width: 0 !important; }
   .print-table-summary {
     display: flex !important;
     align-items: center;
