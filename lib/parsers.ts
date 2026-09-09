@@ -34,6 +34,11 @@ function numeric(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function currencyAmount(value: unknown) {
+  const amount = numeric(value);
+  return Math.round((amount + Math.sign(amount) * Number.EPSILON) * 100) / 100;
+}
+
 function excelDateToISO(value: unknown): string | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);
@@ -306,7 +311,7 @@ export async function parseReceiptWorkbook(file: File): Promise<Receipt[]> {
         const found = blocks.some((block) => {
           const date = excelDateToISO(rows[rowIndex]?.[block.dateIndex]);
           const description = text(rows[rowIndex]?.[block.descriptionIndex]);
-          const amount = numeric(rows[rowIndex]?.[block.amountIndex]);
+          const amount = currencyAmount(rows[rowIndex]?.[block.amountIndex]);
           return Boolean(date && description && amount !== 0 && identifiedReceipt(description).isValid);
         });
         if (found) {
@@ -323,7 +328,7 @@ export async function parseReceiptWorkbook(file: File): Promise<Receipt[]> {
       for (const block of blocks) {
         const date = excelDateToISO(row?.[block.dateIndex]);
         const description = text(row?.[block.descriptionIndex]);
-        const amount = numeric(row?.[block.amountIndex]);
+        const amount = currencyAmount(row?.[block.amountIndex]);
         if (!date || !description || !Number.isFinite(amount) || amount === 0) continue;
 
         const { invoiceNumbers, identifiedClient, isValid } = identifiedReceipt(description);

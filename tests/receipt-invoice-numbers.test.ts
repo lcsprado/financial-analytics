@@ -26,3 +26,22 @@ test("percentuais de pagamentos parciais não são concatenados às NFs", async 
     assert.equal(receipt.bank, "BRADESCO");
   });
 });
+
+test("valores monetários são normalizados para centavos antes da soma", async () => {
+  const rows: unknown[][] = [
+    ["DATA", "BRADESCO", "VALOR", "DATA", "BANCO DO BRASIL", "VALOR"],
+    [],
+    [],
+    ["", "RECEBIMENTOS"],
+    [46248, "FUNDAÇÃO ABC | SÃO MATEUS - NF 521", 53519.22856],
+    [46248, "FUNDAÇÃO ABC | SÃO MATEUS - NF 522", 4506.047245],
+    [46248, "FUNDAÇÃO ABC | SÃO MATEUS - NF 523", 51542.30452],
+  ];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), "AGOSTO 2026");
+  const file = new File([XLSX.write(workbook, { type: "array", bookType: "xlsx" })], "conciliacao.xlsx");
+  const receipts = await parseReceiptWorkbook(file);
+
+  assert.deepEqual(receipts.map((receipt) => receipt.amount), [53519.23, 4506.05, 51542.3]);
+  assert.equal(receipts.reduce((sum, receipt) => sum + receipt.amount, 0), 109567.58);
+});
