@@ -4,7 +4,7 @@ import type { ImportState } from "@/lib/types";
 
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL";
-const SESSION_KEY = "financial-analytics-sandbox-session-v1";
+const SESSION_KEY = "financial-analytics-production-session-v1";
 
 export type SandboxRole = "admin" | "updater" | "viewer";
 
@@ -12,10 +12,7 @@ export type SandboxSession = {
   access_token: string;
   refresh_token: string;
   expires_at: number;
-  user: {
-    id: string;
-    email?: string;
-  };
+  user: { id: string; email?: string };
 };
 
 export type SandboxProfile = {
@@ -94,30 +91,23 @@ export async function signInSandbox(email: string, password: string) {
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error_description || payload?.msg || "Não foi possível entrar.");
-
   const session = sessionFromPayload(payload);
   persistSession(session);
   return session;
 }
 
-export function signOutSandbox() {
-  persistSession(null);
-}
+export function signOutSandbox() { persistSession(null); }
 
 export async function getValidSandboxSession() {
   const current = readSandboxSession();
   if (!current) return null;
   if (current.expires_at > Math.floor(Date.now() / 1000) + 60) return current;
-
   const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({ refresh_token: current.refresh_token }),
   });
-  if (!response.ok) {
-    persistSession(null);
-    return null;
-  }
+  if (!response.ok) { persistSession(null); return null; }
   const payload = await response.json();
   const refreshed: SandboxSession = {
     access_token: payload.access_token,
@@ -130,13 +120,13 @@ export async function getValidSandboxSession() {
 }
 
 export async function loadSandboxProfile(session: SandboxSession) {
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dashboard_test_mark_access`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dashboard_prod_mark_access`, {
     method: "POST",
     headers: headers(session.access_token),
     body: "{}",
     cache: "no-store",
   });
-  if (!response.ok) throw new Error("Usuário autenticado, mas sem acesso ao sandbox.");
+  if (!response.ok) throw new Error("Usuário autenticado, mas sem acesso ao Dashboard.");
   const rows = await response.json() as SandboxProfile[];
   return rows[0] ?? null;
 }
@@ -147,7 +137,7 @@ export async function checkSandboxAccess(session: SandboxSession) {
     select: "user_id,display_name,role,must_change_password,last_access_at,refresh_requested_at",
     limit: "1",
   });
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_profiles?${query.toString()}`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_prod_profiles?${query.toString()}`, {
     headers: headers(session.access_token),
     cache: "no-store",
   });
@@ -158,29 +148,23 @@ export async function checkSandboxAccess(session: SandboxSession) {
 
 export async function updateSandboxPassword(session: SandboxSession, password: string) {
   if (password.length < 8) throw new Error("A nova senha precisa ter pelo menos 8 caracteres.");
-
   const passwordResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     method: "PUT",
     headers: headers(session.access_token),
     body: JSON.stringify({ password }),
   });
   const passwordPayload = await passwordResponse.json().catch(() => null);
-  if (!passwordResponse.ok) {
-    throw new Error(passwordPayload?.msg || passwordPayload?.message || "Não foi possível alterar a senha.");
-  }
-
-  const finishResponse = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dashboard_test_finish_password_change`, {
+  if (!passwordResponse.ok) throw new Error(passwordPayload?.msg || passwordPayload?.message || "Não foi possível alterar a senha.");
+  const finishResponse = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dashboard_prod_finish_password_change`, {
     method: "POST",
     headers: headers(session.access_token),
     body: "{}",
   });
-  if (!finishResponse.ok) {
-    throw new Error("A senha foi alterada, mas não foi possível concluir o primeiro acesso. Entre novamente.");
-  }
+  if (!finishResponse.ok) throw new Error("A senha foi alterada, mas não foi possível concluir o primeiro acesso. Entre novamente.");
 }
 
 async function adminApi(session: SandboxSession, init?: RequestInit) {
-  const response = await fetch("/api/dashboard-test/users", {
+  const response = await fetch("/api/dashboard/users", {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -199,57 +183,33 @@ export async function listSandboxUsers(session: SandboxSession) {
   return (payload.users ?? []) as SandboxManagedUser[];
 }
 
-export async function createSandboxUser(
-  session: SandboxSession,
-  input: { displayName: string; email: string; role: SandboxRole },
-) {
-  return adminApi(session, {
-    method: "POST",
-    body: JSON.stringify(input),
-  }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string }>;
+export async function createSandboxUser(session: SandboxSession, input: { displayName: string; email: string; role: SandboxRole }) {
+  return adminApi(session, { method: "POST", body: JSON.stringify(input) }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string }>;
 }
 
-export async function updateSandboxManagedUser(
-  session: SandboxSession,
-  input: { email: string; role?: SandboxRole; active?: boolean },
-) {
-  return adminApi(session, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  }) as Promise<{ user: SandboxManagedUser }>;
+export async function updateSandboxManagedUser(session: SandboxSession, input: { email: string; role?: SandboxRole; active?: boolean }) {
+  return adminApi(session, { method: "PATCH", body: JSON.stringify(input) }) as Promise<{ user: SandboxManagedUser }>;
 }
 
 export async function requestSandboxDashboardRefresh(session: SandboxSession, email: string) {
-  return adminApi(session, {
-    method: "PATCH",
-    body: JSON.stringify({ email, refreshDashboard: true }),
-  }) as Promise<{ user: SandboxManagedUser; refreshRequestedAt: string }>;
+  return adminApi(session, { method: "PATCH", body: JSON.stringify({ email, refreshDashboard: true }) }) as Promise<{ user: SandboxManagedUser; refreshRequestedAt: string }>;
 }
 
 export async function resetSandboxTemporaryPassword(session: SandboxSession, email: string) {
-  return adminApi(session, {
-    method: "PATCH",
-    body: JSON.stringify({ email, resetTemporaryPassword: true }),
-  }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string }>;
+  return adminApi(session, { method: "PATCH", body: JSON.stringify({ email, resetTemporaryPassword: true }) }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string }>;
 }
 
 export async function loadCurrentSandboxSnapshot(session: SandboxSession) {
-  const response = await fetch(
-    `${SUPABASE_URL}/rest/v1/dashboard_test_current_snapshot?select=*&limit=1`,
-    { headers: headers(session.access_token), cache: "no-store" },
-  );
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_prod_current_snapshot?select=*&limit=1`, {
+    headers: headers(session.access_token),
+    cache: "no-store",
+  });
   if (!response.ok) throw new Error("Não foi possível carregar a base compartilhada.");
   const rows = await response.json() as SandboxSnapshot[];
   return rows[0] ?? null;
 }
 
-export async function saveSandboxSnapshot({
-  session,
-  profile,
-  data,
-  receiptChannels,
-  note,
-}: {
+export async function saveSandboxSnapshot({ session, profile, data, receiptChannels, note }: {
   session: SandboxSession;
   profile: SandboxProfile;
   data: ImportState;
@@ -257,12 +217,9 @@ export async function saveSandboxSnapshot({
   note?: string;
 }) {
   if (profile.role === "viewer") throw new Error("Seu perfil é somente consulta.");
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_test_snapshots`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_prod_snapshots`, {
     method: "POST",
-    headers: {
-      ...headers(session.access_token),
-      Prefer: "return=minimal",
-    },
+    headers: { ...headers(session.access_token), Prefer: "return=minimal" },
     body: JSON.stringify({
       uploaded_by: session.user.id,
       invoice_file_name: data.invoiceFileName ?? null,
@@ -273,7 +230,7 @@ export async function saveSandboxSnapshot({
       metadata: {
         invoice_count: data.invoices.length,
         receipt_count: data.receipts.length,
-        source: "financial-analytics-test",
+        source: "financial-analytics-production",
       },
       note: note ?? null,
     }),
