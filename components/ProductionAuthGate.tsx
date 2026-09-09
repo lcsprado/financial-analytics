@@ -58,15 +58,31 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
     lastRefreshRequest.current = nextProfile.refresh_requested_at ?? null;
     setSession(nextSession); setProfile(nextProfile);
     document.documentElement.dataset.dashboardRole = nextProfile.role;
-    if (!nextProfile.must_change_password) await hydrateSharedSnapshot(nextSession);
+    if (!nextProfile.must_change_password) {
+      try {
+        await hydrateSharedSnapshot(nextSession);
+        setError(null);
+      } catch {
+        setBaseInfo("Base compartilhada indisponível no momento. A sessão foi mantida.");
+      }
+    }
   }
 
   useEffect(() => {
     let active = true;
     void (async () => {
-      try { const current = await getValidSandboxSession(); if (active && current) await bootstrap(current); }
-      catch (caught) { if (active) { signOutSandbox(); setSession(null); setProfile(null); setError(caught instanceof Error ? caught.message : "Não foi possível abrir o Dashboard."); } }
-      finally { if (active) setLoading(false); }
+      try {
+        const current = await getValidSandboxSession();
+        if (active && current) await bootstrap(current);
+      } catch (caught) {
+        if (active) {
+          setSession(null);
+          setProfile(null);
+          setError(caught instanceof Error ? caught.message : "Não foi possível restaurar sua sessão agora. Tente atualizar a página.");
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
     return () => { active = false; };
   }, []);
@@ -85,10 +101,17 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
       } catch { /* falha transitória não encerra a sessão */ }
       finally { checking = false; }
     };
-    const interval = window.setInterval(() => { void revalidate(); }, 10000);
+    const interval = window.setInterval(() => { void revalidate(); }, 5000);
     const onFocus = () => { void revalidate(); };
+    const onVisibility = () => { if (document.visibilityState === "visible") void revalidate(); };
     window.addEventListener("focus", onFocus);
-    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", onFocus); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [session, profile]);
 
   useEffect(() => {
