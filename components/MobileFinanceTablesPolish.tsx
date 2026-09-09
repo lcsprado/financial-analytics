@@ -4,8 +4,19 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
   return (
     <style jsx global>{`
       @media (max-width: 760px) {
+        .content-area,
+        .panel,
+        .table-wrap,
+        .forecast-panel-v13,
+        .forecast-table-v13 {
+          min-width: 0 !important;
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+
         ${scope === "invoices" || scope === "receipts" ? `
           .table-wrap {
+            width: 100% !important;
             overflow: visible !important;
             border: 0 !important;
             background: transparent !important;
@@ -14,26 +25,36 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
           .table-wrap tbody {
             display: block !important;
             width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+            box-sizing: border-box !important;
           }
           .table-wrap thead { display: none !important; }
           .table-wrap tbody {
             display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
             gap: 10px !important;
           }
           .table-wrap tbody tr {
             display: grid !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
             padding: 12px !important;
             overflow: hidden !important;
             border: 1px solid #e5e8ef !important;
             border-radius: 14px !important;
             background: #fff !important;
             box-shadow: 0 5px 16px rgba(31,39,67,.035) !important;
+            box-sizing: border-box !important;
           }
           .table-wrap tbody td {
             display: flex !important;
+            width: auto !important;
             min-width: 0 !important;
+            max-width: 100% !important;
             min-height: 0 !important;
             padding: 7px 6px !important;
             border: 0 !important;
@@ -43,10 +64,12 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
             gap: 3px !important;
             text-align: left !important;
             white-space: normal !important;
-            overflow-wrap: break-word !important;
+            overflow: hidden !important;
+            overflow-wrap: anywhere !important;
             word-break: normal !important;
             line-height: 1.32 !important;
             font-size: 12px !important;
+            box-sizing: border-box !important;
           }
           .table-wrap tbody td::before {
             display: block !important;
@@ -60,19 +83,22 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
             text-align: left !important;
             align-items: flex-start !important;
           }
-          .table-wrap tbody td.number strong { font-size: 13px !important; }
+          .table-wrap tbody td.number strong {
+            max-width: 100% !important;
+            font-size: 13px !important;
+            overflow-wrap: anywhere !important;
+          }
           .table-wrap .client-cell,
           .table-wrap .description-cell {
             grid-column: 1 / -1 !important;
             font-size: 13px !important;
           }
-          .table-wrap .description-cell {
-            color: #4d5669 !important;
-          }
+          .table-wrap .description-cell { color: #4d5669 !important; }
           .nf-pill, .bank-pill {
             max-width: 100% !important;
             width: fit-content !important;
             white-space: normal !important;
+            overflow-wrap: anywhere !important;
           }
           ${scope === "invoices" ? `
             .table-wrap tbody td:nth-child(1)::before { content: "Emissão"; }
@@ -89,6 +115,11 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
             .table-wrap tbody td:nth-child(5)::before { content: "Valor"; }
             .table-wrap tbody td:nth-child(3) { grid-column: 1 / -1 !important; }
           `}
+          .table-toolbar,
+          .table-toolbar > * {
+            min-width: 0 !important;
+            max-width: 100% !important;
+          }
           .table-toolbar > div[style] {
             width: 100% !important;
             min-width: 0 !important;
@@ -108,6 +139,7 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
           }
         ` : `
           .forecast-table-v13 {
+            width: 100% !important;
             overflow: visible !important;
             border: 0 !important;
             background: transparent !important;
@@ -116,10 +148,15 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
           .forecast-table-v13 tbody {
             display: block !important;
             width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+            box-sizing: border-box !important;
           }
           .forecast-table-v13 thead { display: none !important; }
           .forecast-table-v13 tbody {
             display: grid !important;
+            grid-template-columns: minmax(0, 1fr) !important;
             gap: 10px !important;
             padding: 0 8px 10px !important;
           }
@@ -128,16 +165,22 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             gap: 0 !important;
             width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
             padding: 12px !important;
+            overflow: hidden !important;
             border: 1px solid #e5e8ef !important;
             border-radius: 14px !important;
             background: #fff !important;
             box-shadow: 0 5px 16px rgba(31,39,67,.04) !important;
+            box-sizing: border-box !important;
           }
           .forecast-table-v13 tbody td,
           .forecast-table-v13 tbody td.client {
             display: flex !important;
+            width: auto !important;
             min-width: 0 !important;
+            max-width: 100% !important;
             min-height: 0 !important;
             padding: 7px 6px !important;
             border: 0 !important;
@@ -146,10 +189,12 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
             justify-content: flex-start !important;
             gap: 3px !important;
             white-space: normal !important;
-            overflow-wrap: break-word !important;
+            overflow: hidden !important;
+            overflow-wrap: anywhere !important;
             word-break: normal !important;
             line-height: 1.28 !important;
             font-size: 11.5px !important;
+            box-sizing: border-box !important;
           }
           .forecast-table-v13 tbody td::before {
             display: block !important;
@@ -173,31 +218,39 @@ export default function MobileFinanceTablesPolish({ scope }: { scope: "invoices"
           .forecast-table-v13 tbody td:nth-child(6)::before { content: "Confiança"; }
           .forecast-table-v13 tbody td:nth-child(7)::before { content: "Ajustar"; }
           .forecast-table-v13 tbody td:nth-child(3) strong {
+            max-width: 100% !important;
             font-size: 14px !important;
             color: #20263a !important;
+            overflow-wrap: anywhere !important;
           }
-          .forecast-table-v13 tbody td:nth-child(4) {
-            grid-column: 1 / -1 !important;
-          }
+          .forecast-table-v13 tbody td:nth-child(4) { grid-column: 1 / -1 !important; }
           .forecast-table-v13 tbody td:nth-child(7) {
-            align-items: flex-end !important;
-            justify-content: flex-end !important;
+            align-items: flex-start !important;
+            justify-content: flex-start !important;
           }
-          .forecast-table-v13 tbody td:nth-child(7)::before { align-self: flex-start; }
           .forecast-table-v13 tbody td:nth-child(7) button {
+            position: static !important;
+            inset: auto !important;
+            transform: none !important;
+            margin: 0 !important;
             min-width: 42px !important;
             min-height: 42px !important;
           }
           .forecast-filter-v13 {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             grid-template-areas:
               "title title"
               "client month"
               "week confidence"
               "pending clear" !important;
+            box-sizing: border-box !important;
           }
           .forecast-filter-v13 > button {
             width: 100% !important;
+            min-width: 0 !important;
             justify-self: stretch !important;
           }
           @media (max-width: 360px) {
