@@ -138,3 +138,16 @@ Abrir a Preview consolidada em navegador, executar a bateria funcional acima, co
 - URL estável da homologação: https://financial-analytics-git-homologacao-consolidad-cc10ce-lcshprado.vercel.app/
 - Próximo passo obrigatório: abrir essa URL estável, entrar com usuário da sandbox e executar a bateria autenticada/financeira listada acima. A solicitação de autenticação foi apresentada ao usuário; não foram fornecidas credenciais nem obtida sessão da aplicação nesta rodada.
 - Não promover. Classificação atual: NÃO APTA PARA PRODUÇÃO por validação incompleta.
+
+## Retomada autenticada e checkpoint após interrupção — 2026-09-09
+- Alterações locais recuperadas: correção em `lib/parsers.ts` e novo teste `tests/receipt-invoice-numbers.test.ts`. Preservadas após revisão.
+- A sessão autenticada da sandbox abriu normalmente na Preview. Navegação mobile por Menu → Importar e Recebimentos exercitada.
+- Bases anteriores: 1.547 emissões, 2.509 recebimentos. Ano 1901 visível no filtro foi rastreado a uma data incorreta na planilha antiga; a conciliação atual já corrige essa data. Não foi inventada data nem alterada a planilha.
+- Arquivos atuais indicados explicitamente pelo usuário: FINR020 em `C:\Relatorios ToTvs\finr020.xlsx`; conciliação na pasta corporativa `Financeiro - Documentos\Financeiro\BIOMEGA`.
+- Importação real na Preview: FINR020 confirmou 1.650 emissões importadas com sucesso; conciliação chegou a 2.616 recebimentos. A conclusão da sincronização deve ser reconferida na retomada.
+- Leitura local das fontes atuais pelo parser confirmou 1.650 emissões e 2.616 recebimentos; não há datas anteriores a 2020. Existem candidatos a duplicidade que ainda precisam ser investigados por título/origem antes de qualquer exclusão.
+- Bug confirmado no navegador: descrição `NF 10833 - 50%` era identificada como `1083350`; casos equivalentes em NF 537 e 539. Corrigido o parser para retirar percentuais antes de extrair os números das notas, sem modificar valores, datas ou bancos.
+- Em 09/09, os seis testes passaram: cinco de previsão/semanas/filtros e um teste de importação com seis cenários de NF, percentuais, números múltiplos, zeros à esquerda e ponto de milhar. A primeira tentativa da rodada anterior falhou porque a planilha sintética tinha um banco, enquanto o formato reconhecido requer dois; o fixture foi corrigido antes da interrupção.
+- A interrupção anterior ocorreu por limite de uso na revisão automática de execução. Nenhum teste bloqueado foi declarado aprovado.
+- Próximos passos: enviar esta correção à homologação, confirmar Preview READY, reimportar conciliação na versão corrigida, verificar NF 10833/537/539 e invariância dos valores. Conferir totais/líquidos por fonte, duplicidades, conciliação/vínculos, previsão, Cielo, Excel/PDF, sessão e mobile.
+- Classificação mantida: NÃO APTA PARA PRODUÇÃO enquanto a validação crítica estiver incompleta. Main e produção não alteradas.

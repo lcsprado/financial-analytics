@@ -121,7 +121,8 @@ export async function parseInvoiceWorkbook(file: File): Promise<Invoice[]> {
 const NF_MARKER = String.raw`N\.?\s*F\.?\s*(?:E|S)?`;
 
 function extractInvoiceNumbers(description: string) {
-  const upper = description.toUpperCase();
+  // Percentuais de pagamento não fazem parte da identificação da nota.
+  const upper = description.toUpperCase().replace(/\b\d+(?:[.,]\d+)?\s*%/g, " ");
   const numbers: string[] = [];
   const patterns = [
     new RegExp(`${NF_MARKER}[\\s.:-]*([0-9][0-9\\s/.,E-]*)`, "g"),
