@@ -1,4 +1,3 @@
-import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
@@ -91,9 +90,7 @@ async function findAuthUserByEmail(email: string, key: string) {
 }
 
 function generateTemporaryPassword() {
-  const bytes = randomBytes(2);
-  const number = ((bytes[0] << 8) + bytes[1]) % 10000;
-  return `Teste${String(number).padStart(4, "0")}!`;
+  return "1234";
 }
 
 async function syncProfile(user: ManagedUser, authUserId: string, key: string) {
