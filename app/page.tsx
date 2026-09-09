@@ -6,6 +6,7 @@ import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalize
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import PerformanceScopedEnhancers from "@/components/PerformanceScopedEnhancers";
 import PrintButton from "@/components/PrintButton";
+import ProductionAuthGate from "@/components/ProductionAuthGate";
 import ReceiptClientIdentityNormalizer from "@/components/ReceiptClientIdentityNormalizer";
 import ReceiptClientLinkFineControls from "@/components/ReceiptClientLinkFineControls";
 import ReceiptExcelExportEnhancer from "@/components/ReceiptExcelExportEnhancer";
@@ -15,7 +16,7 @@ import ReportSourceLabels from "@/components/ReportSourceLabels";
 
 export default function Home() {
   return (
-    <>
+    <ProductionAuthGate>
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
@@ -30,6 +31,6 @@ export default function Home() {
       <ReceiptForecastEnhancerV13 />
       <ReceiptForecastTableFitFix />
       <PerformanceScopedEnhancers />
-    </>
+    </ProductionAuthGate>
   );
 }
