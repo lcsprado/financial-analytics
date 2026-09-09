@@ -3,9 +3,11 @@ import FinancialDashboard from "@/components/FinancialDashboard";
 import ForecastNavigationStateSync from "@/components/ForecastNavigationStateSync";
 import HideOverviewClientFilter from "@/components/HideOverviewClientFilter";
 import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalizer";
+import InvoiceSummaryLayoutFix from "@/components/InvoiceSummaryLayoutFix";
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import PerformanceScopedEnhancers from "@/components/PerformanceScopedEnhancers";
 import PrintButton from "@/components/PrintButton";
+import ProductionAuthGate from "@/components/ProductionAuthGate";
 import ReceiptClientIdentityNormalizer from "@/components/ReceiptClientIdentityNormalizer";
 import ReceiptClientLinkFineControls from "@/components/ReceiptClientLinkFineControls";
 import ReceiptExcelExportEnhancer from "@/components/ReceiptExcelExportEnhancer";
@@ -15,7 +17,7 @@ import ReportSourceLabels from "@/components/ReportSourceLabels";
 
 export default function Home() {
   return (
-    <>
+    <ProductionAuthGate>
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
@@ -26,10 +28,11 @@ export default function Home() {
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
       <InvoiceClientCodeNormalizer />
+      <InvoiceSummaryLayoutFix />
       <ReceiptClientIdentityNormalizer />
       <ReceiptForecastEnhancerV13 />
       <ReceiptForecastTableFitFix />
       <PerformanceScopedEnhancers />
-    </>
+    </ProductionAuthGate>
   );
 }
