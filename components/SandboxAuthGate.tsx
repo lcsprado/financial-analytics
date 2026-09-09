@@ -23,26 +23,7 @@ import {
   setStorageConsent,
 } from "@/lib/offlineStorage";
 import type { ImportState } from "@/lib/types";
-
-function dataFingerprint(data: ImportState) {
-  let hash = 2166136261;
-  const add = (value: unknown) => {
-    const text = String(value ?? "");
-    for (let index = 0; index < text.length; index += 1) {
-      hash ^= text.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-  };
-  add(data.invoiceFileName);
-  add(data.receiptFileName);
-  data.invoices.forEach((item) => {
-    add(item.id); add(item.invoiceNumber); add(item.grossValue); add(item.netValue);
-  });
-  data.receipts.forEach((item) => {
-    add(item.id); add(item.receiptDate); add(item.amount); add(item.bank);
-  });
-  return `${data.invoices.length}:${data.receipts.length}:${hash >>> 0}`;
-}
+import { dataFingerprint } from "@/lib/sandboxDataFingerprint";
 
 export default function SandboxAuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SandboxSession | null>(null);

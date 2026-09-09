@@ -151,3 +151,16 @@ Abrir a Preview consolidada em navegador, executar a bateria funcional acima, co
 - A interrupção anterior ocorreu por limite de uso na revisão automática de execução. Nenhum teste bloqueado foi declarado aprovado.
 - Próximos passos: enviar esta correção à homologação, confirmar Preview READY, reimportar conciliação na versão corrigida, verificar NF 10833/537/539 e invariância dos valores. Conferir totais/líquidos por fonte, duplicidades, conciliação/vínculos, previsão, Cielo, Excel/PDF, sessão e mobile.
 - Classificação mantida: NÃO APTA PARA PRODUÇÃO enquanto a validação crítica estiver incompleta. Main e produção não alteradas.
+
+### Correção de persistência das NFs — 2026-09-09
+- Commit de parser publicado: `62526b237433aaa2591f8fcdcb8cea42279dc489`; Preview READY `dpl_ANzwdZfp7MAvVx2pxqtyHyT9mhY4`.
+- Sessão retomada no dia seguinte sem pedir login; perfil admin e base compartilhada carregados. A importação anterior foi sincronizada com sucesso.
+- A fonte corporativa recebeu um novo lançamento desde 08/09: agora são 2.617 recebimentos (1.679 em 2026). Não atribuir a diferença de quantidade à correção de parser.
+- Comparação do parser anterior e corrigido sobre os MESMOS bytes: nove NFs corrigidas, invariância exata de todos os demais campos dos 2.617 recebimentos.
+- Reimportação na Preview corrigiu NF 10833 na tela, porém reload recuperou `1083350`. Causa confirmada: `dataFingerprint` ignorava invoiceNumbers, descrição e identificadores de clientes/títulos; mesma quantidade/data/valor impedia sincronização.
+- Corrigida a comparação para incluir os campos persistidos de emissões e recebimentos, extraída para função pura testável. Mantidos autenticação, tabelas, autoria e permissões existentes.
+- Oito testes automatizados passaram, incluindo detecção da correção de NF sem alteração de valores e alterações de identificação de cliente/título.
+- Controle independente da FINR020: 1.650 linhas; bruto R$ 307.366.721,57, líquido R$ 287.059.537,44 e tributos R$ 20.307.184,13, diferença zero.
+- Candidatos a duplicidade da fonte foram apresentados ao usuário e preservados: duas linhas de recebimento de R$ 300.000,00 em 27/05/2026; dez linhas de ACORDO de R$ 16.233,79. Outro par de mesma NF/valor tem títulos distintos.
+- Diferença de arredondamento a investigar: total de recebimentos de 2026 exibido R$ 264.016.166,47 versus R$ 264.016.166,56 somando cada linha arredondada a centavos. Não corrigir sem rastrear a precisão da origem.
+- Próximo passo: retestar persistência após deployment desta correção e concluir conferência de precisão, conciliação, Cielo, filtros/exportação/impressão e previsão.
