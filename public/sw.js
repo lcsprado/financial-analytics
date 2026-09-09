@@ -1,4 +1,4 @@
-const CACHE_VERSION = "financial-analytics-v1-20260730";
+const CACHE_VERSION = "financial-analytics-v2-20260909";
 const APP_CACHE = `${CACHE_VERSION}-app`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const APP_SHELL = [
@@ -41,6 +41,7 @@ self.addEventListener("install", (event) => {
     await Promise.all([cachePageAndAssets(cache, "/"), cachePageAndAssets(cache, "/importar")]);
   })());
 });
+
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const names = await caches.keys();
@@ -55,6 +56,21 @@ self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
+async function networkFirst(request, cacheName) {
+  try {
+    const response = await fetch(request, { cache: "no-store" });
+    if (response.ok) {
+      const cache = await caches.open(cacheName);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    throw new Error("Recurso indisponível offline");
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET" || request.headers.has("authorization")) return;
@@ -64,7 +80,7 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: "no-store" });
         if (response.ok) {
           const cache = await caches.open(APP_CACHE);
           await cache.put(request, response.clone());
@@ -79,7 +95,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (["script", "style", "font", "image", "worker"].includes(request.destination)) {
+  if (["script", "style", "worker"].includes(request.destination)) {
+    event.respondWith(networkFirst(request, RUNTIME_CACHE));
+    return;
+  }
+
+  if (["font", "image"].includes(request.destination)) {
     event.respondWith((async () => {
       const cached = await caches.match(request);
       if (cached) return cached;
