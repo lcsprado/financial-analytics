@@ -68,7 +68,59 @@ export default function ReceiptForecastFilterLayoutFixV22() {
 
       @media (max-width: 760px) {
         .receipt-forecast-active-v13 .forecast-filter-v13 {
-          grid-template-columns: 1fr;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          grid-template-areas:
+            "title title"
+            "client month"
+            "week confidence"
+            "pending clear" !important;
+          align-items: end !important;
+          gap: 8px !important;
+        }
+
+        .receipt-forecast-active-v13 .forecast-filter-title-v13 {
+          grid-column: 1 / -1 !important;
+          padding-bottom: 2px;
+        }
+
+        .receipt-forecast-active-v13 .forecast-filter-v13 > label {
+          min-width: 0 !important;
+        }
+
+        .receipt-forecast-active-v13 .forecast-filter-v13 > label > span {
+          display: block;
+          margin-bottom: 5px;
+          font-size: 8px !important;
+          letter-spacing: .035em;
+          white-space: nowrap;
+        }
+
+        .receipt-forecast-active-v13 .forecast-filter-v13 > label > div,
+        .receipt-forecast-active-v13 .forecast-filter-v13 select {
+          min-width: 0 !important;
+          width: 100% !important;
+        }
+
+        .receipt-forecast-active-v13 .forecast-filter-v13 select {
+          font-size: 10.5px !important;
+          text-overflow: ellipsis;
+        }
+
+        .receipt-forecast-active-v13 .forecast-filter-v13 .forecast-only-pending-button-v16,
+        .receipt-forecast-active-v13 .forecast-filter-v13 > button:not(.forecast-only-pending-button-v16) {
+          width: 100% !important;
+          min-width: 0 !important;
+          justify-content: center !important;
+          justify-self: stretch !important;
+          padding-left: 8px !important;
+          padding-right: 8px !important;
+          white-space: nowrap;
+        }
+      }
+
+      @media (max-width: 340px) {
+        .receipt-forecast-active-v13 .forecast-filter-v13 {
+          grid-template-columns: 1fr !important;
           grid-template-areas:
             "title"
             "client"
@@ -76,11 +128,7 @@ export default function ReceiptForecastFilterLayoutFixV22() {
             "week"
             "confidence"
             "pending"
-            "clear";
-        }
-
-        .receipt-forecast-active-v13 .forecast-filter-v13 > button:not(.forecast-only-pending-button-v16) {
-          width: 100%;
+            "clear" !important;
         }
       }
     `}</style>

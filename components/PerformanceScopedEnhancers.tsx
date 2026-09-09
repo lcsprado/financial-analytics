@@ -7,6 +7,7 @@ import DashboardVisualControls from "@/components/DashboardVisualControls";
 import DashboardVisualPolishV1 from "@/components/DashboardVisualPolishV1";
 import InvoiceAnalyticsEnhancer from "@/components/InvoiceAnalyticsEnhancer";
 import InvoiceClientLinkManager from "@/components/InvoiceClientLinkManager";
+import MobileFinanceTablesPolish from "@/components/MobileFinanceTablesPolish";
 import MonthlyVariationEnhancer from "@/components/MonthlyVariationEnhancer";
 import OverviewClientFilterEnhancer from "@/components/OverviewClientFilterEnhancer";
 import OverviewClientLinkManager from "@/components/OverviewClientLinkManager";
@@ -123,6 +124,7 @@ export default function PerformanceScopedEnhancers() {
         <>
           <InvoiceClientLinkManager />
           <InvoiceAnalyticsEnhancer />
+          <MobileFinanceTablesPolish scope="invoices" />
         </>
       ) : null}
 
@@ -130,6 +132,7 @@ export default function PerformanceScopedEnhancers() {
         <>
           <ReceiptClientIdentityRefresh />
           <ReceiptClientLinkManager />
+          <MobileFinanceTablesPolish scope="receipts" />
         </>
       ) : null}
 
@@ -144,6 +147,7 @@ export default function PerformanceScopedEnhancers() {
           <ReceiptForecastPrintFinalV19 />
           <ReceiptForecastHideWeeksPanelV21 />
           <ReceiptForecastFilterLayoutFixV22 />
+          <MobileFinanceTablesPolish scope="forecast" />
         </>
       ) : null}
     </>
