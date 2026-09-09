@@ -13,9 +13,20 @@ type InstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+type OrientationController = ScreenOrientation & {
+  lock?: (orientation: "portrait-primary") => Promise<void>;
+  unlock?: () => void;
+};
+
+const ORIENTATION_LOCK_KEY = "financial-analytics-orientation-lock-v1";
+
 function standaloneMode() {
   return window.matchMedia("(display-mode: standalone)").matches
     || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+}
+
+function getOrientationController() {
+  return screen.orientation as OrientationController | undefined;
 }
 
 export default function PwaControls() {
@@ -28,6 +39,8 @@ export default function PwaControls() {
   const [consented, setConsented] = useState(false);
   const [message, setMessage] = useState("");
   const [isIos, setIsIos] = useState(false);
+  const [orientationSupported, setOrientationSupported] = useState(false);
+  const [portraitLocked, setPortraitLocked] = useState(false);
 
   useEffect(() => {
     const handleOffline = () => {
@@ -56,10 +69,21 @@ export default function PwaControls() {
     window.addEventListener("appinstalled", handleInstalled);
     window.addEventListener(STORAGE_CONSENT_EVENT, handleConsent);
     const browserStateTimer = window.setTimeout(() => {
+      const isStandalone = standaloneMode();
+      const orientation = getOrientationController();
+      const supportsOrientationLock = Boolean(orientation?.lock && orientation?.unlock);
+      const savedPortraitLock = window.localStorage.getItem(ORIENTATION_LOCK_KEY) === "portrait";
+
       setOnline(navigator.onLine);
-      setInstalled(standaloneMode());
+      setInstalled(isStandalone);
       setConsented(hasStorageConsent());
       setIsIos(/iphone|ipad|ipod/i.test(navigator.userAgent));
+      setOrientationSupported(supportsOrientationLock);
+      setPortraitLocked(savedPortraitLock);
+
+      if (isStandalone && supportsOrientationLock && savedPortraitLock && orientation?.lock) {
+        void orientation.lock("portrait-primary").catch(() => undefined);
+      }
     }, 0);
 
     if ("serviceWorker" in navigator) {
@@ -118,6 +142,35 @@ export default function PwaControls() {
     }
   }
 
+  async function toggleOrientation(next: boolean) {
+    const orientation = getOrientationController();
+    if (!orientation?.lock || !orientation?.unlock) {
+      setOrientationSupported(false);
+      setMessage("Este navegador não permite controlar a orientação do aplicativo.");
+      return;
+    }
+
+    try {
+      if (next) {
+        await orientation.lock("portrait-primary");
+        window.localStorage.setItem(ORIENTATION_LOCK_KEY, "portrait");
+        setPortraitLocked(true);
+        setMessage("Orientação travada na vertical.");
+      } else {
+        orientation.unlock();
+        window.localStorage.removeItem(ORIENTATION_LOCK_KEY);
+        setPortraitLocked(false);
+        setMessage("Rotação automática do aplicativo ativada.");
+      }
+    } catch {
+      if (next) {
+        window.localStorage.removeItem(ORIENTATION_LOCK_KEY);
+        setPortraitLocked(false);
+      }
+      setMessage("Não foi possível alterar a orientação neste dispositivo.");
+    }
+  }
+
   async function clearData() {
     await clearOfflineData();
     setMessage("Planilhas e análises removidas deste dispositivo.");
@@ -156,6 +209,19 @@ export default function PwaControls() {
               </button>
             )}
             {installed && <span className="pwa-installed">Aplicativo instalado</span>}
+            {installed && orientationSupported && (
+              <label className="pwa-storage-option">
+                <input
+                  type="checkbox"
+                  checked={portraitLocked}
+                  onChange={(event) => void toggleOrientation(event.target.checked)}
+                />
+                <span>
+                  <b>Travar na vertical</b>
+                  <small>Desmarcado = rotação automática do aplicativo.</small>
+                </span>
+              </label>
+            )}
             <label className="pwa-storage-option">
               <input
                 type="checkbox"
