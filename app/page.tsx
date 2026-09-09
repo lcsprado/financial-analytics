@@ -12,10 +12,11 @@ import ReceiptExcelExportEnhancer from "@/components/ReceiptExcelExportEnhancer"
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReceiptForecastTableFitFix from "@/components/ReceiptForecastTableFitFix";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
+import SandboxAuthGate from "@/components/SandboxAuthGate";
 
 export default function Home() {
   return (
-    <>
+    <SandboxAuthGate>
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
@@ -30,6 +31,6 @@ export default function Home() {
       <ReceiptForecastEnhancerV13 />
       <ReceiptForecastTableFitFix />
       <PerformanceScopedEnhancers />
-    </>
+    </SandboxAuthGate>
   );
 }
