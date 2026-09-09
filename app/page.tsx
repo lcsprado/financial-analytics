@@ -3,6 +3,7 @@ import FinancialDashboard from "@/components/FinancialDashboard";
 import ForecastNavigationStateSync from "@/components/ForecastNavigationStateSync";
 import HideOverviewClientFilter from "@/components/HideOverviewClientFilter";
 import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalizer";
+import InvoiceSummaryLayoutFix from "@/components/InvoiceSummaryLayoutFix";
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
 import PerformanceScopedEnhancers from "@/components/PerformanceScopedEnhancers";
 import PrintButton from "@/components/PrintButton";
@@ -27,6 +28,7 @@ export default function Home() {
       <ReportSourceLabels />
       <ClientFilterSearchEnhancer />
       <InvoiceClientCodeNormalizer />
+      <InvoiceSummaryLayoutFix />
       <ReceiptClientIdentityNormalizer />
       <ReceiptForecastEnhancerV13 />
       <ReceiptForecastTableFitFix />
