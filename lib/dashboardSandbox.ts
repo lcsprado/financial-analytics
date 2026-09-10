@@ -83,14 +83,23 @@ function sessionFromPayload(payload: any): SandboxSession {
   };
 }
 
-export async function signInSandbox(email: string, password: string) {
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify({ email, password }),
-  });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload?.error_description || payload?.msg || "Não foi possível entrar.");
+export async function signInSandbox(identifier: string, password: string) {
+  const value = identifier.trim();
+  const response = value.includes("@")
+    ? await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ email: value.toLowerCase(), password }),
+    })
+    : await fetch("/api/dashboard/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: value, password }),
+      cache: "no-store",
+    });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || payload?.error_description || payload?.msg || "Não foi possível entrar.");
   const session = sessionFromPayload(payload);
   persistSession(session);
   return session;
