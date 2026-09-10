@@ -5,6 +5,9 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL
 const PROTECTED_OWNER_EMAIL = "lcsprado4@gmail.com";
 
 type AuthUser = { id: string; email?: string };
+type AdminAuthResult =
+  | { user: AuthUser }
+  | { failure: string; status: number };
 
 type ManagedUser = {
   email: string;
@@ -43,29 +46,29 @@ function bearerToken(request: NextRequest) {
   return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
 }
 
-async function authenticateAdmin(request: NextRequest, key: string) {
+async function authenticateAdmin(request: NextRequest, key: string): Promise<AdminAuthResult> {
   const token = bearerToken(request);
-  if (!token) return { failure: "Sessão não informada.", status: 401 } as const;
+  if (!token) return { failure: "Sessão não informada.", status: 401 };
 
   const userResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
-  if (!userResponse.ok) return { failure: "Sessão inválida ou expirada.", status: 401 } as const;
+  if (!userResponse.ok) return { failure: "Sessão inválida ou expirada.", status: 401 };
 
   const authUser = await userResponse.json() as Partial<AuthUser>;
-  if (!authUser.id) return { failure: "Usuário não identificado.", status: 401 } as const;
+  if (!authUser.id) return { failure: "Usuário não identificado.", status: 401 };
 
   const profileResponse = await fetch(
     `${SUPABASE_URL}/rest/v1/dashboard_prod_profiles?user_id=eq.${encodeURIComponent(authUser.id)}&select=role&limit=1`,
     { headers: serviceHeaders(key), cache: "no-store" },
   );
-  if (!profileResponse.ok) return { failure: "Não foi possível validar o administrador.", status: 500 } as const;
+  if (!profileResponse.ok) return { failure: "Não foi possível validar o administrador.", status: 500 };
 
   const profiles = await profileResponse.json() as Array<{ role: string }>;
-  if (profiles[0]?.role !== "admin") return { failure: "Somente administradores podem gerenciar usuários.", status: 403 } as const;
+  if (profiles[0]?.role !== "admin") return { failure: "Somente administradores podem gerenciar usuários.", status: 403 };
 
-  return { user: { id: authUser.id, email: authUser.email } } as const;
+  return { user: { id: authUser.id, email: authUser.email } };
 }
 
 async function fetchAllowedUser(email: string, key: string) {
