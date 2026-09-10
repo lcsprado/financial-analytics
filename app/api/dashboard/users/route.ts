@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL";
 const PROTECTED_OWNER_EMAIL = "lcsprado4@gmail.com";
-const TEMPORARY_PASSWORD = "1234";
+const TEMPORARY_PASSWORD = "123456";
 const USER_SELECT = "email,display_name,role,active,must_change_password,last_access_at,refresh_requested_at,created_at,updated_at";
 
 type DashboardRole = "admin" | "updater" | "viewer";

@@ -99,7 +99,7 @@ export default function SandboxUserAdmin({ session, onClose }: { session: Sandbo
       {error && <div className="dashboard-users-error">{error}</div>}
       {temporaryPassword && createdEmail && <div className="dashboard-temp-password"><div><strong>Senha temporária para {createdEmail}</strong><span>Senha inicial padrão. O usuário deverá substituí-la no primeiro acesso.</span></div><code>{temporaryPassword}</code><button type="button" onClick={copyCredentials}>{copied ? <Check size={16}/> : <Copy size={16}/>} {copied ? "Copiada" : "Copiar senha"}</button></div>}
       <form className="dashboard-user-create" onSubmit={handleCreate}>
-        <div className="dashboard-user-create-title"><UserPlus size={17}/><div><strong>Novo usuário</strong><span>Senha inicial: 1234, com troca obrigatória no primeiro acesso.</span></div></div>
+        <div className="dashboard-user-create-title"><UserPlus size={17}/><div><strong>Novo usuário</strong><span>Senha inicial: 123456, com troca obrigatória no primeiro acesso.</span></div></div>
         <label><span>Nome</span><input value={displayName} onChange={(e)=>setDisplayName(e.target.value)} required /></label>
         <label><span>E-mail</span><input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required /></label>
         <label><span>Perfil</span><select value={role} onChange={(e)=>setRole(e.target.value as SandboxRole)}><option value="viewer">Visualizador</option><option value="updater">Atualizador</option><option value="admin">Administrador</option></select></label>
@@ -116,7 +116,7 @@ export default function SandboxUserAdmin({ session, onClose }: { session: Sandbo
             <div className="dashboard-user-actions">
               <select value={user.role} disabled={!user.active || protectedOwner} onChange={(e)=>void changeUser(user,{role:e.target.value as SandboxRole})}><option value="viewer">Visualizador</option><option value="updater">Atualizador</option><option value="admin">Administrador</option></select>
               {!protectedOwner && user.active && <button type="button" className="refresh" disabled={refreshingEmail===user.email || deletingEmail===user.email} onClick={()=>void refreshDashboard(user)}><RefreshCw size={15}/>{refreshingEmail===user.email?"Enviando...":"Atualizar dashboard"}</button>}
-              {!protectedOwner && user.active && <button type="button" className="password" disabled={resettingEmail===user.email || deletingEmail===user.email} onClick={()=>void resetPassword(user)}><KeyRound size={15}/>{resettingEmail===user.email?"Gerando...":"Nova senha 1234"}</button>}
+              {!protectedOwner && user.active && <button type="button" className="password" disabled={resettingEmail===user.email || deletingEmail===user.email} onClick={()=>void resetPassword(user)}><KeyRound size={15}/>{resettingEmail===user.email?"Gerando...":"Nova senha 123456"}</button>}
               {!protectedOwner && <button type="button" className={user.active?"danger":"activate"} disabled={deletingEmail===user.email} onClick={()=>void changeUser(user,{active:!user.active})}><Power size={15}/>{user.active?"Desativar":"Ativar"}</button>}
               {!protectedOwner && !isSelf && <button type="button" className="delete" disabled={deletingEmail===user.email} onClick={()=>void deleteUser(user)}><Trash2 size={15}/>{deletingEmail===user.email?"Excluindo...":"Excluir"}</button>}
             </div>
