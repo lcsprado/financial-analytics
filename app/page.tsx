@@ -14,6 +14,7 @@ import ReceiptExcelExportEnhancer from "@/components/ReceiptExcelExportEnhancer"
 import ReceiptForecastEnhancerV13 from "@/components/ReceiptForecastEnhancerV13";
 import ReceiptForecastTableFitFix from "@/components/ReceiptForecastTableFitFix";
 import ReportSourceLabels from "@/components/ReportSourceLabels";
+import ViewerForecastReadOnlyGuard from "@/components/ViewerForecastReadOnlyGuard";
 
 export default function Home() {
   return (
@@ -32,6 +33,7 @@ export default function Home() {
       <ReceiptClientIdentityNormalizer />
       <ReceiptForecastEnhancerV13 />
       <ReceiptForecastTableFitFix />
+      <ViewerForecastReadOnlyGuard />
       <PerformanceScopedEnhancers />
     </ProductionAuthGate>
   );
