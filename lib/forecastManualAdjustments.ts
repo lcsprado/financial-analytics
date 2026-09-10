@@ -1,3 +1,7 @@
+"use client";
+
+import { checkSandboxAccess, getValidSandboxSession } from "@/lib/dashboardSandbox";
+
 export type ForecastAdjustmentType = "exclude" | "move" | "confirm" | "manual_add";
 
 export type ForecastManualAdjustment = {
@@ -40,6 +44,14 @@ async function parseError(response: Response) {
   throw new Error(body || `Supabase respondeu ${response.status}`);
 }
 
+async function assertForecastWriteAccess() {
+  const session = await getValidSandboxSession();
+  if (!session) throw new Error("Sua sessão expirou. Entre novamente para alterar a previsão.");
+  const profile = await checkSandboxAccess(session);
+  if (!profile) throw new Error("Seu usuário não está autorizado neste Dashboard.");
+  if (profile.role === "viewer") throw new Error("Seu perfil é somente consulta e não pode alterar a previsão.");
+}
+
 export async function listForecastAdjustments(monthKey: string) {
   const query = new URLSearchParams({
     select: "*",
@@ -71,6 +83,7 @@ async function deactivatePrevious(adjustment: NewForecastManualAdjustment) {
 }
 
 export async function createForecastAdjustment(adjustment: NewForecastManualAdjustment) {
+  await assertForecastWriteAccess();
   await deactivatePrevious(adjustment);
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
     method: "POST",
@@ -83,6 +96,7 @@ export async function createForecastAdjustment(adjustment: NewForecastManualAdju
 }
 
 export async function restoreForecastAdjustment(id: string) {
+  await assertForecastWriteAccess();
   const query = new URLSearchParams({ id: `eq.${id}` });
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?${query.toString()}`, {
     method: "PATCH",
