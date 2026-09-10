@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL";
 const PROTECTED_OWNER_EMAIL = "lcsprado4@gmail.com";
-const TEMPORARY_PASSWORD = "1234";
+const TEMPORARY_PASSWORD = "123456";
 const USER_SELECT = "email,display_name,role,active,must_change_password,last_access_at,refresh_requested_at,created_at,updated_at";
 
 type DashboardRole = "admin" | "updater" | "viewer";
@@ -139,6 +139,18 @@ async function removeAllowedUser(email: string, key: string) {
   });
 }
 
+async function resetExistingAuthUser(authUserId: string, key: string) {
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(authUserId)}`, {
+    method: "PUT",
+    headers: serviceHeaders(key),
+    body: JSON.stringify({ password: TEMPORARY_PASSWORD }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { msg?: string; message?: string } | null;
+    throw new Error(payload?.msg || payload?.message || "Não foi possível preparar o acesso existente com a senha temporária.");
+  }
+}
+
 export async function GET(request: NextRequest) {
   const key = serviceKey();
   if (!key) return error(MISSING_SECRET, 503);
@@ -176,9 +188,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (await fetchAllowedUser(email, key)) return error("Este e-mail já está cadastrado no Dashboard.", 409);
-    if (await findAuthUserByEmail(email, key)) {
-      return error("Este e-mail já existe no Supabase Auth. Para evitar misturar acessos antigos, use outro e-mail ou trate esse cadastro separadamente.", 409);
-    }
+    const existingAuthUser = await findAuthUserByEmail(email, key);
 
     const allowResponse = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_prod_allowed_users`, {
       method: "POST",
@@ -200,33 +210,54 @@ export async function POST(request: NextRequest) {
       return error("Não foi possível recuperar o cadastro autorizado.", 500);
     }
 
-    const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-      method: "POST",
-      headers: serviceHeaders(key),
-      body: JSON.stringify({
-        email,
-        password: TEMPORARY_PASSWORD,
-        email_confirm: true,
-        user_metadata: { display_name: displayName },
-      }),
-    });
-    if (!authResponse.ok) {
-      await removeAllowedUser(email, key);
-      const payload = await authResponse.json().catch(() => null) as { msg?: string; message?: string } | null;
-      return error(payload?.msg || payload?.message || "Não foi possível criar o acesso no Supabase Auth.", 500);
+    let authUserId = existingAuthUser?.id ?? null;
+    let reusedAuthUser = false;
+
+    if (existingAuthUser) {
+      try {
+        await resetExistingAuthUser(existingAuthUser.id, key);
+        reusedAuthUser = true;
+      } catch (caught) {
+        await removeAllowedUser(email, key);
+        throw caught;
+      }
+    } else {
+      const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+        method: "POST",
+        headers: serviceHeaders(key),
+        body: JSON.stringify({
+          email,
+          password: TEMPORARY_PASSWORD,
+          email_confirm: true,
+          user_metadata: { display_name: displayName },
+        }),
+      });
+      if (!authResponse.ok) {
+        await removeAllowedUser(email, key);
+        const payload = await authResponse.json().catch(() => null) as { msg?: string; message?: string } | null;
+        return error(payload?.msg || payload?.message || "Não foi possível criar o acesso no Supabase Auth.", 500);
+      }
+
+      const createdAuthPayload = await authResponse.json().catch(() => null) as (Partial<AuthUser> & { user?: Partial<AuthUser> }) | null;
+      authUserId = createdAuthPayload?.id
+        ?? createdAuthPayload?.user?.id
+        ?? (await findAuthUserByEmail(email, key))?.id
+        ?? null;
     }
 
-    const createdAuthPayload = await authResponse.json().catch(() => null) as (Partial<AuthUser> & { user?: Partial<AuthUser> }) | null;
-    const authUserId = createdAuthPayload?.id
-      ?? createdAuthPayload?.user?.id
-      ?? (await findAuthUserByEmail(email, key))?.id;
     if (!authUserId) {
       await removeAllowedUser(email, key);
       return error("Usuário criado, mas não foi possível identificar o acesso no Supabase Auth.", 500);
     }
 
-    await syncProfile(created, authUserId, key);
-    return NextResponse.json({ user: created, temporaryPassword: TEMPORARY_PASSWORD }, { status: 201 });
+    try {
+      await syncProfile(created, authUserId, key);
+    } catch (caught) {
+      await removeAllowedUser(email, key);
+      throw caught;
+    }
+
+    return NextResponse.json({ user: created, temporaryPassword: TEMPORARY_PASSWORD, reusedAuthUser }, { status: 201 });
   } catch (caught) {
     return error(caught instanceof Error ? caught.message : "Falha ao criar o usuário.", 500);
   }

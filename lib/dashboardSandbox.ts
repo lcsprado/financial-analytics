@@ -193,7 +193,7 @@ export async function listSandboxUsers(session: SandboxSession) {
 }
 
 export async function createSandboxUser(session: SandboxSession, input: { displayName: string; email: string; role: SandboxRole }) {
-  return adminApi(session, { method: "POST", body: JSON.stringify(input) }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string }>;
+  return adminApi(session, { method: "POST", body: JSON.stringify(input) }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string; reusedAuthUser?: boolean }>;
 }
 
 export async function updateSandboxManagedUser(session: SandboxSession, input: { email: string; role?: SandboxRole; active?: boolean }) {
@@ -206,6 +206,21 @@ export async function requestSandboxDashboardRefresh(session: SandboxSession, em
 
 export async function resetSandboxTemporaryPassword(session: SandboxSession, email: string) {
   return adminApi(session, { method: "PATCH", body: JSON.stringify({ email, resetTemporaryPassword: true }) }) as Promise<{ user: SandboxManagedUser; temporaryPassword: string }>;
+}
+
+export async function deleteSandboxManagedUser(session: SandboxSession, email: string) {
+  const response = await fetch("/api/dashboard/users/delete", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ email }),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || "Não foi possível excluir o usuário do Dashboard.");
+  return payload as { deleted: true; email: string; authAccountPreserved: boolean };
 }
 
 export async function loadCurrentSandboxSnapshot(session: SandboxSession) {
