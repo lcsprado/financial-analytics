@@ -133,9 +133,10 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
 
   useEffect(() => {
     if (!session || !profile || profile.must_change_password || profile.role === "viewer") return;
+    let active = true;
 
     const publishImportedFile = async (detail: ImportedFileEventDetail, data: ImportState) => {
-      if (publishingImportRef.current) return;
+      if (!active || publishingImportRef.current) return;
       const dataFileName = detail.kind === "invoices" ? data.invoiceFileName : data.receiptFileName;
       if (!dataFileName || dataFileName !== detail.fileName) return;
       if (data.invoiceFileName?.includes("demonstração") || data.receiptFileName?.includes("demonstração")) return;
@@ -186,13 +187,17 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
       const detail = (event as CustomEvent<ImportedFileEventDetail>).detail;
       if (!detail) return;
       pendingImportRef.current = detail;
-      const data = latestDataRef.current;
-      if (data) void publishImportedFile(detail, data);
+      window.setTimeout(() => {
+        if (!active || pendingImportRef.current !== detail) return;
+        const latest = latestDataRef.current;
+        if (latest) void publishImportedFile(detail, latest);
+      }, 750);
     };
 
     window.addEventListener(ANALYSIS_DATA_EVENT, handleAnalysisUpdate);
     window.addEventListener(IMPORTED_FILE_EVENT, handleImportedFile);
     return () => {
+      active = false;
       window.removeEventListener(ANALYSIS_DATA_EVENT, handleAnalysisUpdate);
       window.removeEventListener(IMPORTED_FILE_EVENT, handleImportedFile);
     };
