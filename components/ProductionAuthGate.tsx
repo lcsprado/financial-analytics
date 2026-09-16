@@ -19,6 +19,11 @@ import { ANALYSIS_DATA_EVENT, loadChannelPayload, saveAnalysisState, saveChannel
 import type { ImportState } from "@/lib/types";
 import { dataFingerprint } from "@/lib/sandboxDataFingerprint";
 
+function formatImportTimestamp(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+  return `${date.toLocaleDateString("pt-BR")} às ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
 export default function ProductionAuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SandboxSession | null>(null);
   const [profile, setProfile] = useState<SandboxProfile | null>(null);
@@ -49,7 +54,7 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
       saveAnalysisState(remoteData),
       saveChannelPayload({ fileName: snapshot.receipt_file_name ?? "Base compartilhada", entries: Array.isArray(snapshot.receipt_channels) ? snapshot.receipt_channels : [] }),
     ]);
-    setBaseInfo(`Base compartilhada: ${new Date(snapshot.created_at).toLocaleString("pt-BR")}${snapshot.uploaded_by_name ? ` • ${snapshot.uploaded_by_name}` : ""}`);
+    setBaseInfo(`Última importação: ${formatImportTimestamp(snapshot.created_at)}${snapshot.uploaded_by_name ? ` • ${snapshot.uploaded_by_name}` : ""}`);
   }
 
   async function bootstrap(nextSession: SandboxSession) {
@@ -126,7 +131,7 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
           const channelPayload = await loadChannelPayload<{ fileName?: string; entries?: unknown[] }>();
           const receiptChannels = Array.isArray(channelPayload?.entries) ? channelPayload.entries : [];
           await saveSandboxSnapshot({ session, profile, data, receiptChannels, note: "Atualização publicada no Dashboard." });
-          setBaseInfo(`Base compartilhada: ${new Date().toLocaleString("pt-BR")} • ${profile.display_name ?? session.user.email ?? "usuário"}`); setError(null);
+          setBaseInfo(`Última importação: ${formatImportTimestamp(new Date())} • ${profile.display_name ?? session.user.email ?? "usuário"}`); setError(null);
         } catch (caught) { lastSyncedFingerprint.current = null; setError(caught instanceof Error ? caught.message : "Não foi possível publicar a base compartilhada."); }
       })();
     };
