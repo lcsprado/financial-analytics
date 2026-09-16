@@ -17,12 +17,13 @@ import {
 } from "@/lib/dashboardSandbox";
 import { ANALYSIS_DATA_EVENT, loadChannelPayload, saveAnalysisState, saveChannelPayload, setStorageConsent } from "@/lib/offlineStorage";
 import type { ImportState } from "@/lib/types";
-import { dataFingerprint } from "@/lib/sandboxDataFingerprint";
-
-function formatImportTimestamp(value: string | Date) {
-  const date = value instanceof Date ? value : new Date(value);
-  return `${date.toLocaleDateString("pt-BR")} às ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
-}
+import {
+  IMPORTED_FILE_EVENT,
+  importAuditFromMetadata,
+  writeImportAudit,
+  type ImportedFileEventDetail,
+  type ImportAuditState,
+} from "@/lib/importAudit";
 
 export default function ProductionAuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SandboxSession | null>(null);
@@ -35,26 +36,37 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
   const [changingPassword, setChangingPassword] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [baseInfo, setBaseInfo] = useState("Base compartilhada não carregada.");
-  const lastSyncedFingerprint = useRef<string | null>(null);
+  const [baseInfo, setBaseInfo] = useState("");
   const lastRefreshRequest = useRef<string | null>(null);
+  const latestDataRef = useRef<ImportState | null>(null);
+  const importAuditRef = useRef<ImportAuditState>({});
+  const pendingImportRef = useRef<ImportedFileEventDetail | null>(null);
+  const publishingImportRef = useRef(false);
 
   async function hydrateSharedSnapshot(nextSession: SandboxSession) {
     const snapshot = await loadCurrentSandboxSnapshot(nextSession);
-    if (!snapshot) { setBaseInfo("Nenhuma base compartilhada publicada ainda."); return; }
+    if (!snapshot) {
+      importAuditRef.current = {};
+      writeImportAudit({});
+      setBaseInfo("Nenhuma base compartilhada publicada ainda.");
+      return;
+    }
     const remoteData: ImportState = {
       invoices: snapshot.invoices,
       receipts: snapshot.receipts,
       invoiceFileName: snapshot.invoice_file_name ?? undefined,
       receiptFileName: snapshot.receipt_file_name ?? undefined,
     };
-    lastSyncedFingerprint.current = dataFingerprint(remoteData);
+    latestDataRef.current = remoteData;
+    const audit = importAuditFromMetadata(snapshot.metadata);
+    importAuditRef.current = audit;
+    writeImportAudit(audit);
     setStorageConsent(true);
     await Promise.all([
       saveAnalysisState(remoteData),
       saveChannelPayload({ fileName: snapshot.receipt_file_name ?? "Base compartilhada", entries: Array.isArray(snapshot.receipt_channels) ? snapshot.receipt_channels : [] }),
     ]);
-    setBaseInfo(`Última importação: ${formatImportTimestamp(snapshot.created_at)}${snapshot.uploaded_by_name ? ` • ${snapshot.uploaded_by_name}` : ""}`);
+    setBaseInfo("");
   }
 
   async function bootstrap(nextSession: SandboxSession) {
@@ -121,22 +133,69 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
 
   useEffect(() => {
     if (!session || !profile || profile.must_change_password || profile.role === "viewer") return;
+
+    const publishImportedFile = async (detail: ImportedFileEventDetail, data: ImportState) => {
+      if (publishingImportRef.current) return;
+      const dataFileName = detail.kind === "invoices" ? data.invoiceFileName : data.receiptFileName;
+      if (!dataFileName || dataFileName !== detail.fileName) return;
+      if (data.invoiceFileName?.includes("demonstração") || data.receiptFileName?.includes("demonstração")) return;
+
+      publishingImportRef.current = true;
+      const importedBy = profile.display_name ?? session.user.email ?? "usuário";
+      const nextAudit: ImportAuditState = {
+        ...importAuditRef.current,
+        [detail.kind]: {
+          importedAt: detail.importedAt,
+          importedBy,
+          fileName: detail.fileName,
+        },
+      };
+
+      try {
+        const channelPayload = await loadChannelPayload<{ fileName?: string; entries?: unknown[] }>();
+        const receiptChannels = Array.isArray(channelPayload?.entries) ? channelPayload.entries : [];
+        await saveSandboxSnapshot({
+          session,
+          profile,
+          data,
+          receiptChannels,
+          importAudit: nextAudit,
+          note: detail.kind === "invoices" ? "Importação real da FINR020." : "Importação real da Conciliação.",
+        });
+        importAuditRef.current = nextAudit;
+        writeImportAudit(nextAudit);
+        pendingImportRef.current = null;
+        setBaseInfo("");
+        setError(null);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Não foi possível publicar a base compartilhada.");
+      } finally {
+        publishingImportRef.current = false;
+      }
+    };
+
     const handleAnalysisUpdate = (event: Event) => {
       const data = (event as CustomEvent<ImportState>).detail;
-      if (!data || (!data.invoices.length && !data.receipts.length)) return;
-      if (data.invoiceFileName?.includes("demonstração") || data.receiptFileName?.includes("demonstração")) return;
-      const fingerprint = dataFingerprint(data); if (fingerprint === lastSyncedFingerprint.current) return; lastSyncedFingerprint.current = fingerprint;
-      void (async () => {
-        try {
-          const channelPayload = await loadChannelPayload<{ fileName?: string; entries?: unknown[] }>();
-          const receiptChannels = Array.isArray(channelPayload?.entries) ? channelPayload.entries : [];
-          await saveSandboxSnapshot({ session, profile, data, receiptChannels, note: "Atualização publicada no Dashboard." });
-          setBaseInfo(`Última importação: ${formatImportTimestamp(new Date())} • ${profile.display_name ?? session.user.email ?? "usuário"}`); setError(null);
-        } catch (caught) { lastSyncedFingerprint.current = null; setError(caught instanceof Error ? caught.message : "Não foi possível publicar a base compartilhada."); }
-      })();
+      if (!data) return;
+      latestDataRef.current = data;
+      const pending = pendingImportRef.current;
+      if (pending) void publishImportedFile(pending, data);
     };
+
+    const handleImportedFile = (event: Event) => {
+      const detail = (event as CustomEvent<ImportedFileEventDetail>).detail;
+      if (!detail) return;
+      pendingImportRef.current = detail;
+      const data = latestDataRef.current;
+      if (data) void publishImportedFile(detail, data);
+    };
+
     window.addEventListener(ANALYSIS_DATA_EVENT, handleAnalysisUpdate);
-    return () => window.removeEventListener(ANALYSIS_DATA_EVENT, handleAnalysisUpdate);
+    window.addEventListener(IMPORTED_FILE_EVENT, handleImportedFile);
+    return () => {
+      window.removeEventListener(ANALYSIS_DATA_EVENT, handleAnalysisUpdate);
+      window.removeEventListener(IMPORTED_FILE_EVENT, handleImportedFile);
+    };
   }, [session, profile]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -162,7 +221,7 @@ export default function ProductionAuthGate({ children }: { children: ReactNode }
   if (!session || !profile) return <main className="dashboard-auth-shell"><form className="dashboard-auth-card" onSubmit={handleLogin}><span className="dashboard-auth-badge"><ShieldCheck size={15}/> ACESSO RESTRITO</span><h1>Financial Analytics</h1><p>Entre com seu acesso ao Dashboard Financeiro.</p><label><span>Nome ou e-mail</span><input type="text" autoComplete="username" placeholder="Ex.: Eduardo" value={email} onChange={(e)=>setEmail(e.target.value)} required/></label><label><span>Senha</span><input type="password" autoComplete="current-password" value={password} onChange={(e)=>setPassword(e.target.value)} required/></label>{error && <div className="dashboard-auth-error">{error}</div>}<button type="submit"><LogIn size={17}/>Entrar</button></form><AuthStyles/></main>;
   if (profile.must_change_password) return <main className="dashboard-auth-shell"><form className="dashboard-auth-card" onSubmit={handlePasswordChange}><span className="dashboard-auth-badge"><KeyRound size={15}/> PRIMEIRO ACESSO</span><h1>Crie sua senha</h1><p>A senha temporária deve ser substituída antes de acessar as informações financeiras.</p><div className="dashboard-account-chip"><strong>{profile.display_name ?? "Usuário"}</strong><span>{session.user.email}</span></div><label><span>Nova senha</span><input type="password" minLength={8} value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} required/></label><label><span>Confirmar nova senha</span><input type="password" minLength={8} value={newPasswordConfirm} onChange={(e)=>setNewPasswordConfirm(e.target.value)} required/></label>{error && <div className="dashboard-auth-error">{error}</div>}<button type="submit" disabled={changingPassword}><KeyRound size={17}/>{changingPassword ? "Salvando..." : "Salvar nova senha e entrar"}</button><button className="dashboard-auth-link" type="button" onClick={logout}>Sair e usar outro acesso</button></form><AuthStyles/></main>;
 
-  return <><div className="dashboard-auth-banner"><div><ShieldCheck size={15}/><strong>Financial Analytics</strong><span>{baseInfo}</span><span>Perfil: {profile.role}</span>{error && <span className="dashboard-auth-banner-error">⚠ {error}</span>}</div><div>{profile.role === "admin" && <button type="button" onClick={()=>setUsersOpen(true)}><Users size={15}/> Usuários</button>}<button type="button" onClick={logout}><LogOut size={15}/> Sair</button></div></div>{children}{usersOpen && profile.role === "admin" && <SandboxUserAdmin session={session} onClose={()=>setUsersOpen(false)}/>}<AuthStyles/></>;
+  return <><div className="dashboard-auth-banner"><div><ShieldCheck size={15}/><strong>Financial Analytics</strong>{baseInfo && <span>{baseInfo}</span>}<span>Perfil: {profile.role}</span>{error && <span className="dashboard-auth-banner-error">⚠ {error}</span>}</div><div>{profile.role === "admin" && <button type="button" onClick={()=>setUsersOpen(true)}><Users size={15}/> Usuários</button>}<button type="button" onClick={logout}><LogOut size={15}/> Sair</button></div></div>{children}{usersOpen && profile.role === "admin" && <SandboxUserAdmin session={session} onClose={()=>setUsersOpen(false)}/>}<AuthStyles/></>;
 }
 
 function AuthStyles() { return <style jsx global>{`
