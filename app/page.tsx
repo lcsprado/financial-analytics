@@ -2,6 +2,7 @@ import ClientFilterSearchEnhancer from "@/components/ClientFilterSearchEnhancer"
 import FinancialDashboard from "@/components/FinancialDashboard";
 import ForecastNavigationStateSync from "@/components/ForecastNavigationStateSync";
 import HideOverviewClientFilter from "@/components/HideOverviewClientFilter";
+import ImportAuditEnhancer from "@/components/ImportAuditEnhancer";
 import InvoiceClientCodeNormalizer from "@/components/InvoiceClientCodeNormalizer";
 import InvoiceSummaryLayoutFix from "@/components/InvoiceSummaryLayoutFix";
 import LegacyDirectorModeCleanup from "@/components/LegacyDirectorModeCleanup";
@@ -22,6 +23,7 @@ export default function Home() {
       <LegacyDirectorModeCleanup />
       <PrintButton />
       <FinancialDashboard />
+      <ImportAuditEnhancer />
       <ForecastNavigationStateSync />
       <HideOverviewClientFilter />
       <ReceiptExcelExportEnhancer />

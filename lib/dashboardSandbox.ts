@@ -1,6 +1,7 @@
 "use client";
 
 import type { ImportState } from "@/lib/types";
+import { importAuditMetadata, type ImportAuditState } from "@/lib/importAudit";
 
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL";
@@ -233,11 +234,12 @@ export async function loadCurrentSandboxSnapshot(session: SandboxSession) {
   return rows[0] ?? null;
 }
 
-export async function saveSandboxSnapshot({ session, profile, data, receiptChannels, note }: {
+export async function saveSandboxSnapshot({ session, profile, data, receiptChannels, importAudit, note }: {
   session: SandboxSession;
   profile: SandboxProfile;
   data: ImportState;
   receiptChannels: unknown[];
+  importAudit?: ImportAuditState;
   note?: string;
 }) {
   if (profile.role === "viewer") throw new Error("Seu perfil é somente consulta.");
@@ -255,6 +257,7 @@ export async function saveSandboxSnapshot({ session, profile, data, receiptChann
         invoice_count: data.invoices.length,
         receipt_count: data.receipts.length,
         source: "financial-analytics-production",
+        ...importAuditMetadata(importAudit ?? {}),
       },
       note: note ?? null,
     }),

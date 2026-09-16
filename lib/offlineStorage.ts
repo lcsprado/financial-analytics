@@ -1,6 +1,7 @@
 "use client";
 
 import type { ImportState, PeriodFilter } from "@/lib/types";
+import { IMPORTED_FILE_EVENT, type ImportedFileEventDetail } from "@/lib/importAudit";
 
 export const STORAGE_CONSENT_KEY = "financial-analytics-storage-consent-v1";
 export const STORAGE_CONSENT_EVENT = "financial-analytics-storage-consent-changed";
@@ -166,13 +167,21 @@ export async function saveChannelPayload<T>(payload: T) {
 }
 
 export async function saveImportedFile(kind: "invoices" | "receipts", file: File) {
-  if (!hasStorageConsent()) return;
-  await putRecord<StoredImportedFile>(`file:${kind}`, {
-    name: file.name,
-    type: file.type,
-    lastModified: file.lastModified,
-    blob: file,
-  });
+  if (hasStorageConsent()) {
+    await putRecord<StoredImportedFile>(`file:${kind}`, {
+      name: file.name,
+      type: file.type,
+      lastModified: file.lastModified,
+      blob: file,
+    });
+  }
+
+  const detail: ImportedFileEventDetail = {
+    kind,
+    fileName: file.name,
+    importedAt: new Date().toISOString(),
+  };
+  window.dispatchEvent(new CustomEvent<ImportedFileEventDetail>(IMPORTED_FILE_EVENT, { detail }));
 }
 
 export function readStoredFilter(): PeriodFilter {
