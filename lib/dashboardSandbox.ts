@@ -158,19 +158,14 @@ export async function checkSandboxAccess(session: SandboxSession) {
 
 export async function updateSandboxPassword(session: SandboxSession, password: string) {
   if (password.length < 8) throw new Error("A nova senha precisa ter pelo menos 8 caracteres.");
-  const passwordResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    method: "PUT",
-    headers: headers(session.access_token),
-    body: JSON.stringify({ password }),
-  });
-  const passwordPayload = await passwordResponse.json().catch(() => null);
-  if (!passwordResponse.ok) throw new Error(passwordPayload?.msg || passwordPayload?.message || "Não foi possível alterar a senha.");
-  const finishResponse = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dashboard_prod_finish_password_change`, {
+  const response = await fetch("/api/dashboard/password", {
     method: "POST",
-    headers: headers(session.access_token),
-    body: "{}",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ password }),
+    cache: "no-store",
   });
-  if (!finishResponse.ok) throw new Error("A senha foi alterada, mas não foi possível concluir o primeiro acesso. Entre novamente.");
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || "Não foi possível concluir a troca de senha.");
 }
 
 async function adminApi(session: SandboxSession, init?: RequestInit) {
@@ -267,3 +262,4 @@ export async function saveSandboxSnapshot({ session, profile, data, receiptChann
     throw new Error(payload || "Não foi possível publicar a base compartilhada.");
   }
 }
+

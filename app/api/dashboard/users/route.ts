@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { generateTemporaryPassword } from "@/lib/server/temporaryPassword";
 
 const SUPABASE_URL = "https://mnzzulllazckqinudgoc.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_f8CrCRfwhhx1e3T9B7bp7Q_9p0zDBJL";
 const PROTECTED_OWNER_EMAIL = "lcsprado4@gmail.com";
-const TEMPORARY_PASSWORD = "123456";
 const USER_SELECT = "email,display_name,role,active,must_change_password,last_access_at,refresh_requested_at,created_at,updated_at";
 
 type DashboardRole = "admin" | "updater" | "viewer";
@@ -67,13 +67,13 @@ async function authenticateAdmin(request: NextRequest, key: string): Promise<Adm
   if (!authUser.id) return { failure: "Usuário não identificado.", status: 401 };
 
   const profileResponse = await fetch(
-    `${SUPABASE_URL}/rest/v1/dashboard_prod_profiles?user_id=eq.${encodeURIComponent(authUser.id)}&select=role&limit=1`,
+    `${SUPABASE_URL}/rest/v1/dashboard_prod_profiles?user_id=eq.${encodeURIComponent(authUser.id)}&select=role,must_change_password&limit=1`,
     { headers: serviceHeaders(key), cache: "no-store" },
   );
   if (!profileResponse.ok) return { failure: "Não foi possível validar o administrador.", status: 500 };
 
-  const profiles = await profileResponse.json() as Array<{ role: DashboardRole }>;
-  if (profiles[0]?.role !== "admin") {
+  const profiles = await profileResponse.json() as Array<{ role: DashboardRole; must_change_password: boolean }>;
+  if (profiles[0]?.role !== "admin" || profiles[0].must_change_password) {
     return { failure: "Somente administradores podem gerenciar usuários.", status: 403 };
   }
 
@@ -139,11 +139,11 @@ async function removeAllowedUser(email: string, key: string) {
   });
 }
 
-async function resetExistingAuthUser(authUserId: string, key: string) {
+async function resetExistingAuthUser(authUserId: string, key: string, temporaryPassword: string) {
   const response = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(authUserId)}`, {
     method: "PUT",
     headers: serviceHeaders(key),
-    body: JSON.stringify({ password: TEMPORARY_PASSWORD }),
+    body: JSON.stringify({ password: temporaryPassword }),
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { msg?: string; message?: string } | null;
@@ -189,6 +189,7 @@ export async function POST(request: NextRequest) {
   try {
     if (await fetchAllowedUser(email, key)) return error("Este e-mail já está cadastrado no Dashboard.", 409);
     const existingAuthUser = await findAuthUserByEmail(email, key);
+    const temporaryPassword = generateTemporaryPassword();
 
     const allowResponse = await fetch(`${SUPABASE_URL}/rest/v1/dashboard_prod_allowed_users`, {
       method: "POST",
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest) {
 
     if (existingAuthUser) {
       try {
-        await resetExistingAuthUser(existingAuthUser.id, key);
+        await resetExistingAuthUser(existingAuthUser.id, key, temporaryPassword);
         reusedAuthUser = true;
       } catch (caught) {
         await removeAllowedUser(email, key);
@@ -227,7 +228,7 @@ export async function POST(request: NextRequest) {
         headers: serviceHeaders(key),
         body: JSON.stringify({
           email,
-          password: TEMPORARY_PASSWORD,
+          password: temporaryPassword,
           email_confirm: true,
           user_metadata: { display_name: displayName },
         }),
@@ -257,7 +258,7 @@ export async function POST(request: NextRequest) {
       throw caught;
     }
 
-    return NextResponse.json({ user: created, temporaryPassword: TEMPORARY_PASSWORD, reusedAuthUser }, { status: 201 });
+    return NextResponse.json({ user: created, temporaryPassword, reusedAuthUser }, { status: 201 });
   } catch (caught) {
     return error(caught instanceof Error ? caught.message : "Falha ao criar o usuário.", 500);
   }
@@ -335,11 +336,12 @@ export async function PATCH(request: NextRequest) {
 
     if (resetTemporaryPassword) {
       if (!current.active) return error("Ative o usuário antes de gerar uma nova senha temporária.", 400);
+      const temporaryPassword = generateTemporaryPassword();
 
       const passwordResponse = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(authUser.id)}`, {
         method: "PUT",
         headers: serviceHeaders(key),
-        body: JSON.stringify({ password: TEMPORARY_PASSWORD }),
+        body: JSON.stringify({ password: temporaryPassword }),
       });
       if (!passwordResponse.ok) {
         const payload = await passwordResponse.json().catch(() => null) as { msg?: string; message?: string } | null;
@@ -358,7 +360,7 @@ export async function PATCH(request: NextRequest) {
       const updated = rows[0];
       if (!updated) return error("Senha redefinida, mas não foi possível recuperar o cadastro.", 500);
       await syncProfile(updated, authUser.id, key);
-      return NextResponse.json({ user: updated, temporaryPassword: TEMPORARY_PASSWORD });
+      return NextResponse.json({ user: updated, temporaryPassword });
     }
 
     const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -381,3 +383,4 @@ export async function PATCH(request: NextRequest) {
     return error(caught instanceof Error ? caught.message : "Falha ao atualizar o usuário.", 500);
   }
 }
+

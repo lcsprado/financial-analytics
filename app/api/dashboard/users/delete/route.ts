@@ -60,13 +60,13 @@ async function authenticateAdmin(request: NextRequest, key: string): Promise<Adm
   if (!authUser.id) return { failure: "Usuário não identificado.", status: 401 };
 
   const profileResponse = await fetch(
-    `${SUPABASE_URL}/rest/v1/dashboard_prod_profiles?user_id=eq.${encodeURIComponent(authUser.id)}&select=role&limit=1`,
+    `${SUPABASE_URL}/rest/v1/dashboard_prod_profiles?user_id=eq.${encodeURIComponent(authUser.id)}&select=role,must_change_password&limit=1`,
     { headers: serviceHeaders(key), cache: "no-store" },
   );
   if (!profileResponse.ok) return { failure: "Não foi possível validar o administrador.", status: 500 };
 
-  const profiles = await profileResponse.json() as Array<{ role: string }>;
-  if (profiles[0]?.role !== "admin") return { failure: "Somente administradores podem gerenciar usuários.", status: 403 };
+  const profiles = await profileResponse.json() as Array<{ role: string; must_change_password: boolean }>;
+  if (profiles[0]?.role !== "admin" || profiles[0].must_change_password) return { failure: "Somente administradores podem gerenciar usuários.", status: 403 };
 
   return { user: { id: authUser.id, email: authUser.email } };
 }
@@ -157,3 +157,4 @@ export async function DELETE(request: NextRequest) {
     return error(caught instanceof Error ? caught.message : "Falha ao excluir o usuário.", 500);
   }
 }
+
