@@ -258,7 +258,10 @@ export async function POST(request: NextRequest) {
       throw caught;
     }
 
-    return NextResponse.json({ user: created, temporaryPassword, reusedAuthUser }, { status: 201 });
+    return NextResponse.json({ user: created, temporaryPassword, reusedAuthUser }, {
+      status: 201,
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (caught) {
     return error(caught instanceof Error ? caught.message : "Falha ao criar o usuário.", 500);
   }
@@ -360,7 +363,9 @@ export async function PATCH(request: NextRequest) {
       const updated = rows[0];
       if (!updated) return error("Senha redefinida, mas não foi possível recuperar o cadastro.", 500);
       await syncProfile(updated, authUser.id, key);
-      return NextResponse.json({ user: updated, temporaryPassword });
+      return NextResponse.json({ user: updated, temporaryPassword }, {
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
     const changes: Record<string, unknown> = { updated_at: new Date().toISOString() };
