@@ -68,6 +68,21 @@ export async function POST(request: NextRequest) {
       return error("O primeiro acesso já foi concluído.", 409);
     }
 
+    const samePasswordResponse = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: authUser.email, password }),
+      cache: "no-store",
+    });
+    if (samePasswordResponse.ok) return error("A nova senha deve ser diferente da senha temporária.", 400);
+    const passwordCheck = await samePasswordResponse.json().catch(() => ({})) as {
+      error_code?: string; code?: string; msg?: string;
+    };
+    const invalidCredentials = passwordCheck.error_code === "invalid_credentials"
+      || passwordCheck.code === "invalid_credentials"
+      || passwordCheck.msg === "Invalid login credentials";
+    if (!invalidCredentials) return error("Não foi possível validar a nova senha agora.", 503);
+
     const passwordResponse = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(authUser.id)}`, {
       method: "PUT",
       headers: serviceHeaders(key),
