@@ -27,30 +27,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {children}
         <ReceiptChannelSummary />
         <PwaControls />
-        <a
-          href="https://lcsprado.com.br"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="lcsprado.com.br"
-          style={{
-            position: "fixed",
-            right: 10,
-            bottom: 10,
-            zIndex: 9999,
-            padding: "5px 8px",
-            borderRadius: 999,
-            background: "rgba(0,0,0,.38)",
-            border: "1px solid rgba(255,255,255,.14)",
-            color: "rgba(255,255,255,.68)",
-            fontSize: 10,
-            lineHeight: 1,
-            letterSpacing: ".04em",
-            textDecoration: "none",
-            backdropFilter: "blur(8px)",
-          }}
-        >
-          lcsprado.com.br
-        </a>
       </body>
     </html>
   );
